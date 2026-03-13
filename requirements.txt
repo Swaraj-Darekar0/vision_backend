@@ -1,0 +1,21 @@
+# Flask Web Framework
+flask>=3.0.0
+werkzeug
+
+# Pose Pipeline
+mediapipe
+opencv-python>=4.8.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Audio Pipeline
+assemblyai
+librosa>=0.10.0
+soundfile
+pydub
+imageio_ffmpeg
+python-dotenv
+
+# Evaluation & LLM
+groq
+supabase
