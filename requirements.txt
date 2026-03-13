@@ -1,6 +1,8 @@
 # Flask Web Framework
 flask>=3.0.0
+flask-cors
 werkzeug
+gunicorn
 
 # Pose Pipeline
 mediapipe
