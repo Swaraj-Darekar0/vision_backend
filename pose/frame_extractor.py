@@ -1,12 +1,12 @@
 import cv2
 import numpy as np
 import logging
-from typing import List, Dict
-from config import TARGET_FPS
+from typing import Generator, Dict, Any
+from config import TARGET_FPS, FRAME_RESIZE_WIDTH, FRAME_RESIZE_HEIGHT
 
 logger = logging.getLogger(__name__)
 
-def extract_frames(video_path: str) -> List[Dict]:
+def extract_frames(video_path: str) -> Generator[Dict[str, Any], None, None]:
     """
     Extracts frames from an MP4 video at TARGET_FPS and converts to RGB.
     Source: backend_implementation_plan.md Phase 2.
@@ -14,8 +14,8 @@ def extract_frames(video_path: str) -> List[Dict]:
     Args:
         video_path: Path to the MP4 video file.
         
-    Returns:
-        List of dictionaries containing 'frame' (numpy array) and 'timestamp' (float).
+    Yields:
+        Dictionary containing 'frame' (numpy array, resized) and 'timestamp' (float).
         
     Raises:
         ValueError: If the video file cannot be opened or is invalid.
@@ -35,39 +35,38 @@ def extract_frames(video_path: str) -> List[Dict]:
     duration = total_frames / source_fps
     
     logger.info(f"Extracting frames from {video_path}: {source_fps} FPS, {total_frames} total frames, {duration:.2f}s duration")
+    logger.info(f"Resizing frames to {FRAME_RESIZE_WIDTH}x{FRAME_RESIZE_HEIGHT}")
     
     # Calculate skip factor to match TARGET_FPS if source FPS is higher
     skip_factor = max(1, int(round(source_fps / TARGET_FPS)))
     
-    frames_data = []
     frame_count = 0
     extracted_count = 0
     
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # Only process frames according to skip factor
+            if frame_count % skip_factor == 0:
+                # Resize frame to reduce memory usage and processing time
+                frame_resized = cv2.resize(frame, (FRAME_RESIZE_WIDTH, FRAME_RESIZE_HEIGHT))
+                
+                # Convert BGR (OpenCV default) to RGB (MediaPipe requirement)
+                frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+                
+                timestamp = frame_count / source_fps
+                
+                yield {
+                    "frame": frame_rgb,
+                    "timestamp": float(timestamp)
+                }
+                extracted_count += 1
+                
+            frame_count += 1
             
-        # Only process frames according to skip factor
-        if frame_count % skip_factor == 0:
-            # Convert BGR (OpenCV default) to RGB (MediaPipe requirement)
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            timestamp = frame_count / source_fps
-            
-            frames_data.append({
-                "frame": frame_rgb,
-                "timestamp": float(timestamp)
-            })
-            extracted_count += 1
-            
-        frame_count += 1
-        
-    cap.release()
-    
-    logger.info(f"Successfully extracted {extracted_count} frames at approx {source_fps/skip_factor:.2f} FPS")
-    
-    if not frames_data:
-        logger.warning(f"No frames were extracted from {video_path}")
-        
-    return frames_data
+    finally:
+        cap.release()
+        logger.info(f"Finished extracting. Yielded {extracted_count} frames at approx {source_fps/skip_factor:.2f} FPS")

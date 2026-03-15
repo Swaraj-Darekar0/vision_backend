@@ -9,6 +9,8 @@ load_dotenv()
 TARGET_FPS                      = 30
 MIN_VISIBILITY_THRESHOLD        = 0.5
 POSE_LANDMARKER_MODEL_PATH      = "pose\pose_model\pose_landmarker_full.task"
+FRAME_RESIZE_WIDTH              = 640
+FRAME_RESIZE_HEIGHT             = 360
 
 # Smoothing (One Euro Filter)
 POSE_SMOOTHING_MIN_CUTOFF       = 1.0  # Lower = less jitter at low speed

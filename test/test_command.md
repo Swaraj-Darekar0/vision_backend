@@ -79,8 +79,14 @@ Requires `user_id` from step 6 (Login).
 
 **Step 1: Start Job**
 ```bash
-$response = Invoke-RestMethod -Uri "http://127.0.0.1:5000/analyze/full" -Method Post -ContentType "multipart/form-data" -Body @{ video = Get-Item "test_video.mp4"; user_id = "0f48f97b-03d3-4394-a9af-f8b2d91ce94c" }
+$response = Invoke-RestMethod -Uri "https://vision-backend-evzk.onrender.com/analyze/full" -Method Post -ContentType "multipart/form-data" -Body @{ video = Get-Item "test/test_video.mp4"; user_id = "0f48f97b-03d3-4394-a9af-f8b2d91ce94c" }
 $jobId = $response.job_id
+```
+
+```
+curl -X POST "http://192.168.0.102:5000/analyze/full" \
+  -F "video=@test/test_video.mp4" \
+  -F "user_id=0f48f97b-03d3-4394-a9af-f8b2d91ce94c"
 ```
 
 **Step 2: Poll Status**

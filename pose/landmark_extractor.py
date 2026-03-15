@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 import os
-from typing import List, Dict
+from typing import List, Dict, Iterable
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -9,13 +9,13 @@ from config import MIN_VISIBILITY_THRESHOLD, POSE_LANDMARKER_MODEL_PATH
 
 logger = logging.getLogger(__name__)
 
-def extract_landmarks(frames_data: List[Dict]) -> List[Dict]:
+def extract_landmarks(frames_data: Iterable[Dict]) -> List[Dict]:
     """
-    Runs MediaPipe Tasks PoseLandmarker on a list of RGB frames.
+    Runs MediaPipe Tasks PoseLandmarker on a stream of RGB frames.
     Source: backend_implementation_plan.md Phase 3.
     
     Args:
-        frames_data: List of dicts with 'frame' (RGB np.ndarray) and 'timestamp'.
+        frames_data: Iterable of dicts with 'frame' (RGB np.ndarray) and 'timestamp'.
         
     Returns:
         List of dicts: { "landmarks": np.ndarray (33,4), "timestamp": float, "valid": bool }
@@ -37,6 +37,7 @@ def extract_landmarks(frames_data: List[Dict]) -> List[Dict]:
     )
 
     results_list = []
+    processed_count = 0
 
     # 2. Initialize landmarker
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
@@ -93,6 +94,8 @@ def extract_landmarks(frames_data: List[Dict]) -> List[Dict]:
                     "timestamp": timestamp,
                     "valid": False
                 })
+            finally:
+                processed_count += 1
 
-    logger.info(f"Processed {len(frames_data)} frames with MediaPipe Tasks")
+    logger.info(f"Processed {processed_count} frames with MediaPipe Tasks")
     return results_list
