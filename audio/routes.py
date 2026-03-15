@@ -3,9 +3,41 @@ from audio.pipeline import run_audio_pipeline
 import uuid
 import os
 import logging
+import threading
 
 audio_bp = Blueprint("audio", __name__, url_prefix="/audio")
 logger = logging.getLogger(__name__)
+
+# In-memory store: { job_id -> { "status": str, "result": dict, "error": str } }
+jobs = {}
+
+def _audio_worker(job_id, audio_path, session_id):
+    """
+    Background worker to run the audio pipeline.
+    """
+    logger.info(f"[{job_id}] Worker started for session {session_id}")
+    jobs[job_id] = {"status": "processing", "result": None, "error": None}
+
+    try:
+        # Run the full audio pipeline
+        result = run_audio_pipeline(audio_path, session_id)
+        jobs[job_id]["status"] = "done"
+        jobs[job_id]["result"] = result
+        logger.info(f"[{job_id}] Pipeline completed successfully")
+    except Exception as e:
+        logger.error(f"[{job_id}] Audio pipeline failed: {e}")
+        jobs[job_id]["status"] = "error"
+        jobs[job_id]["error"] = str(e)
+    finally:
+        # Clean up temporary file
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+            logger.info(f"[{session_id}] Cleaned up temp file.")
+        # Also clean up the processed wav from preprocessor
+        # Note: Using hardcoded path structure from original code
+        processed_path = f"tmp/{session_id}_processed.wav"
+        if os.path.exists(processed_path):
+            os.remove(processed_path)
 
 @audio_bp.route("/analyze", methods=["POST"])
 def analyze():
@@ -32,24 +64,27 @@ def analyze():
     tmp_path = os.path.join(tmp_dir, f"{session_id}{ext}")
     
     file.save(tmp_path)
-    logger.info(f"[{session_id}] Starting audio analysis for: {file.filename}")
+    logger.info(f"[{session_id}] Upload received. Spawning background worker for: {file.filename}")
 
-    try:
-        # Run the full audio pipeline
-        result = run_audio_pipeline(tmp_path, session_id)
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error(f"[{session_id}] Audio pipeline failed: {e}")
-        return jsonify({
-            "error": "Audio processing failed",
-            "detail": str(e)
-        }), 500
-    finally:
-        # Clean up temporary file
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-            logger.info(f"[{session_id}] Cleaned up temp file.")
-        # Also clean up the processed wav from preprocessor
-        processed_path = f"tmp/{session_id}_processed.wav"
-        if os.path.exists(processed_path):
-            os.remove(processed_path)
+    # Create job
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {"status": "processing", "result": None, "error": None}
+
+    # Spawn background thread
+    thread = threading.Thread(target=_audio_worker, args=(job_id, tmp_path, session_id))
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({"job_id": job_id, "session_id": session_id}), 202
+
+@audio_bp.route("/status/<job_id>", methods=["GET"])
+def get_status(job_id):
+    """
+    GET /audio/status/<job_id> handler.
+    Poll this endpoint to get the result of the background job.
+    """
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+    
+    return jsonify(job), 200

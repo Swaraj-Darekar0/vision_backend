@@ -6,9 +6,57 @@ import logging
 import uuid
 import os
 import concurrent.futures
+import threading
 
 orchestrator_bp = Blueprint("orchestrator", __name__, url_prefix="/analyze")
 logger = logging.getLogger(__name__)
+
+# In-memory store: { job_id -> { "status": str, "result": dict, "error": str } }
+jobs = {}
+
+def _orchestrator_worker(job_id, video_path, user_id, session_id):
+    """
+    Background worker to run the full orchestrator pipeline.
+    """
+    logger.info(f"[{job_id}] Worker started for session {session_id}")
+    jobs[job_id] = {"status": "processing", "result": None, "error": None}
+
+    try:
+        # 1. Run Pose and Audio pipelines in parallel
+        # Note: ThreadPoolExecutor runs in the same process, so global variables are shared.
+        # Ensure pipelines are stateless as per Law 3.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_pose = executor.submit(run_pose_pipeline, video_path, session_id)
+            future_audio = executor.submit(run_audio_pipeline, video_path, session_id)
+            
+            # Wait for both to complete
+            pose_result = future_pose.result()
+            audio_result = future_audio.result()
+
+        # 2. Run Evaluation pipeline (Synchronous)
+        final_result = run_evaluation_pipeline(pose_result, audio_result, user_id)
+        
+        jobs[job_id]["status"] = "done"
+        jobs[job_id]["result"] = final_result
+        logger.info(f"[{job_id}] Full pipeline completed successfully")
+
+    except Exception as e:
+        logger.error(f"[{job_id}] Full pipeline failed: {e}")
+        jobs[job_id]["status"] = "error"
+        jobs[job_id]["error"] = str(e)
+        
+    finally:
+        # Cleanup temp video file
+        if os.path.exists(video_path):
+            os.remove(video_path)
+            logger.info(f"[{session_id}] Cleaned up temp video file.")
+        
+        # Cleanup processed audio file if it exists (created by audio pipeline)
+        # Assuming audio pipeline logic: tmp/{session_id}_processed.wav
+        processed_audio_path = os.path.join(os.path.dirname(video_path), f"{session_id}_processed.wav")
+        if os.path.exists(processed_audio_path):
+            os.remove(processed_audio_path)
+            logger.info(f"[{session_id}] Cleaned up processed audio file.")
 
 @orchestrator_bp.route("/full", methods=["POST"])
 def analyze_full():
@@ -32,34 +80,27 @@ def analyze_full():
     tmp_path = os.path.join(tmp_dir, f"{session_id}.mp4")
     video_file.save(tmp_path)
     
-    logger.info(f"[{session_id}] Starting FULL analysis for user {user_id}")
+    logger.info(f"[{session_id}] Upload received. Spawning background worker for FULL analysis.")
+
+    # Create job
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {"status": "processing", "result": None, "error": None}
+
+    # Spawn background thread
+    thread = threading.Thread(target=_orchestrator_worker, args=(job_id, tmp_path, user_id, session_id))
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({"job_id": job_id, "session_id": session_id}), 202
+
+@orchestrator_bp.route("/status/<job_id>", methods=["GET"])
+def get_status(job_id):
+    """
+    GET /analyze/status/<job_id> handler.
+    Poll this endpoint to get the result of the background job.
+    """
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
     
-    try:
-        # 1. Run Pose and Audio pipelines in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_pose = executor.submit(run_pose_pipeline, tmp_path, session_id)
-            future_audio = executor.submit(run_audio_pipeline, tmp_path, session_id)
-            
-            # Wait for both to complete
-            pose_result = future_pose.result()
-            audio_result = future_audio.result()
-
-        # 2. Run Evaluation pipeline (Synchronous)
-        final_result = run_evaluation_pipeline(pose_result, audio_result, user_id)
-        
-        return jsonify(final_result), 200
-
-    except Exception as e:
-        logger.error(f"[{session_id}] Full pipeline failed: {e}")
-        return jsonify({"error": "Processing failed", "detail": str(e)}), 500
-        
-    finally:
-        # Cleanup temp video file
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        
-        # Cleanup processed audio file if it exists
-        processed_audio_path = os.path.join(tmp_dir, f"{session_id}_processed.wav")
-        if os.path.exists(processed_audio_path):
-            os.remove(processed_audio_path)
-            logger.info(f"[{session_id}] Cleaned up processed audio file.")
+    return jsonify(job), 200
