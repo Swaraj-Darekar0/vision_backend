@@ -8,7 +8,11 @@ load_dotenv()
 # ═══════════════════════════════════════════════
 TARGET_FPS                      = 30
 MIN_VISIBILITY_THRESHOLD        = 0.5
-POSE_LANDMARKER_MODEL_PATH      = "pose\pose_landmarker_full.task"
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+POSE_LANDMARKER_MODEL_PATH = os.path.join(BASE_DIR, "pose", "pose_landmarker_full.task")
 FRAME_RESIZE_WIDTH              = 640
 FRAME_RESIZE_HEIGHT             = 360
 
