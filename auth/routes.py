@@ -43,10 +43,29 @@ def signup():
         })
         
         # res is an AuthResponse object
-        return jsonify({
+        # Insert into user_profiles if user was created
+        if res.user:
+            try:
+                _db.table("user_profiles").insert({
+                    "id": res.user.id,
+                    "email": email
+                }).execute()
+                logger.info(f"Auth: User profile created for {email}")
+            except Exception as profile_e:
+                logger.error(f"Auth: Failed to create user profile: {profile_e}")
+                # Continue anyway, as auth succeeded
+        
+        response = {
             "message": "User signed up successfully. Check your email for confirmation (if enabled).",
             "user_id": res.user.id if res.user else None
-        }), 201
+        }
+        
+        # Include tokens if session is available (email confirmation disabled)
+        if res.session:
+            response["access_token"] = res.session.access_token
+            response["refresh_token"] = res.session.refresh_token
+        
+        return jsonify(response), 201
     except Exception as e:
         logger.error(f"Auth: Signup failed: {e}")
         return jsonify({"error": str(e)}), 400

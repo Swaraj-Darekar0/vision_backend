@@ -27,14 +27,18 @@ HARD RULES:
 - Do NOT fetch or reference external data.
 - Do NOT reclassify deltas — classifications are already in the JSON.
 - Reference timestamp events by exact times from timestamp_events list.
+- Focus on interpreting the meaning of the scores and classifications to generate insights.
 - Keep feedback professional, encouraging, and highly actionable.
+- motivational closing include a call to action like "review thisyoutuber's this video on this topic(YOU AS A COACH SUGGEST THE BEST TOPIC ON WHICH HE CAN WHTCH VIDEOS SO HE PINPOINT AND WHICH FACTORS TO IMPROVE BY WATCHING THIS VIDEOS)" or "focus on one item at a time for best results"
 - Output must be valid JSON with this exact structure:
   {
     "overall_summary":        "<2-3 sentence session summary>",
+    "one_line_headline_mistakes":       "<1 concise headline capturing key insight,mistakes in simple words,be direct good or bad doesn't matter chose your vocabulary wisely>",
     "progress_narrative":     "<progress since last session based on headline>",
-    "timestamped_moments":    [{"time": "MM:SS", "note": "<observation>"}],
+    "timestamped_moments":    [{"time": "MM:SS", "note": "<observation(interpret it in simple words, be direct good or bad doesn't matter chose your vocabulary wisely)>"}],
     "top_3_action_items":     ["<item>", "<item>", "<item>"],
-    "motivational_closing":   "<1 encouraging sentence>"
+    "motivational_closing":   "<Youtube video recommendation with specific topic to watch for improvement>",
+    "suggest_next_presentation_topics":  "<Suggest 1 specific presentation topic (max 6 words) for the next session, based on the evaluation. Choose difficulty level appropriate to avoid frustration or boredom.>"
   }
 """
 

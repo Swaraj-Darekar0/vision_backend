@@ -38,6 +38,7 @@ def _pose_worker(job_id, video_path, session_id):
 def analyze():
     """
     POST /pose/analyze handler.
+    
     Source: backend_SKILL.md Section 10.
     """
     if "video" not in request.files:

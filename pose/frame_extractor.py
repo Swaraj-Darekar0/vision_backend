@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import logging
 from typing import Generator, Dict, Any
-from config import TARGET_FPS, FRAME_RESIZE_WIDTH, FRAME_RESIZE_HEIGHT
+from config import TARGET_FPS
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def extract_frames(video_path: str) -> Generator[Dict[str, Any], None, None]:
         video_path: Path to the MP4 video file.
         
     Yields:
-        Dictionary containing 'frame' (numpy array, resized) and 'timestamp' (float).
+        Dictionary containing 'frame' (numpy array) and 'timestamp' (float).
         
     Raises:
         ValueError: If the video file cannot be opened or is invalid.
@@ -35,7 +35,6 @@ def extract_frames(video_path: str) -> Generator[Dict[str, Any], None, None]:
     duration = total_frames / source_fps
     
     logger.info(f"Extracting frames from {video_path}: {source_fps} FPS, {total_frames} total frames, {duration:.2f}s duration")
-    logger.info(f"Resizing frames to {FRAME_RESIZE_WIDTH}x{FRAME_RESIZE_HEIGHT}")
     
     # Calculate skip factor to match TARGET_FPS if source FPS is higher
     skip_factor = max(1, int(round(source_fps / TARGET_FPS)))
@@ -51,11 +50,8 @@ def extract_frames(video_path: str) -> Generator[Dict[str, Any], None, None]:
                 
             # Only process frames according to skip factor
             if frame_count % skip_factor == 0:
-                # Resize frame to reduce memory usage and processing time
-                frame_resized = cv2.resize(frame, (FRAME_RESIZE_WIDTH, FRAME_RESIZE_HEIGHT))
-                
                 # Convert BGR (OpenCV default) to RGB (MediaPipe requirement)
-                frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 
                 timestamp = frame_count / source_fps
                 

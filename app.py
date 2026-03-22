@@ -5,6 +5,7 @@ from audio.routes import audio_bp
 from evaluation.routes import eval_bp
 from auth.routes import auth_bp
 from orchestrator.routes import orchestrator_bp
+from streak.routes import streak_bp
 import logging
 import os
 
@@ -33,6 +34,7 @@ def create_app() -> Flask:
     app.register_blueprint(eval_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(orchestrator_bp)
+    app.register_blueprint(streak_bp)
     
     # Create temp directory if it doesn't exist
     tmp_dir = os.path.join(os.getcwd(), "tmp")
@@ -51,4 +53,4 @@ if __name__ == "__main__":
     # In production, use environment PORT or default to 5000
     port = int(os.environ.get("PORT", 5000))
     # host='0.0.0.0' is required for cloud deployment binding
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=True)

@@ -204,3 +204,51 @@ Use this to verify every change is correctly applied before deploying.
 ---
 
 *Plan version 1.0 | Scope: pose/frame_extractor.py, pose/landmark_extractor.py, pose/pipeline.py, config.py | No other files modified.*
+
+
+
+ Currently, your sync function has to use placeholders (like "Synced Session" and "--") because the database is missing
+  these fields.
+
+
+  1. Missing Attributes for the Session List
+  To make the History List and Dashboard look correct after a sync, you are missing these columns:
+
+
+
+  ┌──────────────────┬────────────────────────────────────────┬──────────────────────┐
+  │ Attribute        │ Required For                           │ Recommended SQL Type │
+  ├──────────────────┼────────────────────────────────────────┼──────────────────────┤
+  │ topic_title      │ Displaying what the session was about. │ text                 │
+  │ duration_label   │ Displaying length (e.g., "05:22").     │ text                 │
+  │ is_first_session │ Proper "Progress Comparison" logic.    │ boolean              │
+  └──────────────────┴────────────────────────────────────────┴──────────────────────┘
+
+
+
+  2. Missing Attribute for the Detail View (CRITICAL)
+  Currently, if you sync your history to a new device, you will be able to see the list, but you won't be able to open
+  the details.
+
+
+  The "Analysis Results" screen requires the full EvaluationResult JSON object (which includes LLM feedback, specific
+  strengths, and timestamped moments). Your current table only stores "flat" numbers.
+
+
+  ┌────────────┬───────────────────────────────────────────────────┬──────────────────────┐
+  │ Attribute  │ Required For                                      │ Recommended SQL Type │
+  ├────────────┼───────────────────────────────────────────────────┼──────────────────────┤
+  │ raw_result │ Restoring the full "Analysis" and "Details" view. │ jsonb                │
+  └────────────┴───────────────────────────────────────────────────┴──────────────────────┘
+
+  ---
+
+  Recommended SQL Update
+  Run this in your Supabase SQL Editor to add the missing fields:
+
+
+   1 ALTER TABLE public.session_scores
+   2 ADD COLUMN topic_title text DEFAULT 'Untitled Session',
+   3 ADD COLUMN duration_label text DEFAULT '--',
+   4 ADD COLUMN is_first_session boolean DEFAULT false,
+   5 ADD COLUMN raw_result jsonb;

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # In-memory store: { job_id -> { "status": str, "result": dict, "error": str } }
 jobs = {}
 
-def _orchestrator_worker(job_id, video_path, user_id, session_id):
+def _orchestrator_worker(job_id, video_path, user_id, session_id, metadata):
     """
     Background worker to run the full orchestrator pipeline.
     """
@@ -34,7 +34,7 @@ def _orchestrator_worker(job_id, video_path, user_id, session_id):
             audio_result = future_audio.result()
 
         # 2. Run Evaluation pipeline (Synchronous)
-        final_result = run_evaluation_pipeline(pose_result, audio_result, user_id)
+        final_result = run_evaluation_pipeline(pose_result, audio_result, user_id, metadata)
         
         jobs[job_id]["status"] = "done"
         jobs[job_id]["result"] = final_result
@@ -62,7 +62,7 @@ def _orchestrator_worker(job_id, video_path, user_id, session_id):
 def analyze_full():
     """
     POST /analyze/full
-    Accepts: video file (mp4), user_id (form data)
+    Accepts: video file (mp4), user_id, topic_title, duration_label, is_first_session (form data)
     Runs Pose and Audio pipelines in PARALLEL, then Evaluation.
     """
     if "video" not in request.files:
@@ -73,6 +73,13 @@ def analyze_full():
     
     if not user_id:
         return jsonify({"error": "Missing user_id"}), 400
+
+    # Extract metadata for history sync
+    metadata = {
+        "topic_title": request.form.get("topic_title", "Untitled Session"),
+        "duration_label": request.form.get("duration_label", "--"),
+        "is_first_session": request.form.get("is_first_session", "false").lower() == "true"
+    }
 
     session_id = str(uuid.uuid4())
     tmp_dir = os.path.join(os.getcwd(), "tmp")
@@ -87,7 +94,7 @@ def analyze_full():
     jobs[job_id] = {"status": "processing", "result": None, "error": None}
 
     # Spawn background thread
-    thread = threading.Thread(target=_orchestrator_worker, args=(job_id, tmp_path, user_id, session_id))
+    thread = threading.Thread(target=_orchestrator_worker, args=(job_id, tmp_path, user_id, session_id, metadata))
     thread.daemon = True
     thread.start()
 

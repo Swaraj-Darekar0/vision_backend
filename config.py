@@ -13,8 +13,6 @@ MIN_VISIBILITY_THRESHOLD        = 0.5
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 POSE_LANDMARKER_MODEL_PATH = os.path.join(BASE_DIR, "pose", "pose_landmarker_full.task")
-FRAME_RESIZE_WIDTH              = 640
-FRAME_RESIZE_HEIGHT             = 360
 
 # Smoothing (One Euro Filter)
 POSE_SMOOTHING_MIN_CUTOFF       = 1.0  # Lower = less jitter at low speed
