@@ -64,11 +64,14 @@ def compute_deltas(current_scores: Dict, baseline: Optional[Dict]) -> Dict:
     pause_change = baseline.get("pause_ratio", 0.0) - current_scores.get("pause_ratio", 0.0)
     # Higher posture stability is better
     posture_change = current_scores.get("posture_stability_index", 0.0) - baseline.get("posture_stability_index", 0.0)
+    # Higher reasoning clarity is better
+    reasoning_change = current_scores.get("reasoning_clarity", 0.0) - baseline.get("reasoning_clarity", 0.0)
     
     deltas["behavioral"] = {
         "filler_reduction": {"change": float(filler_change), "label": classify_delta(filler_change)},
         "pause_optimization": {"change": float(pause_change), "label": classify_delta(pause_change)},
-        "posture_stability": {"change": float(posture_change), "label": classify_delta(posture_change)}
+        "posture_stability": {"change": float(posture_change), "label": classify_delta(posture_change)},
+        "reasoning_clarity": {"change": float(reasoning_change), "label": classify_delta(reasoning_change)}
     }
 
     # 4. Overall Headline

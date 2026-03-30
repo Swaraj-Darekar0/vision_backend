@@ -26,11 +26,12 @@ def fuse_scores(pose_data: Dict, audio_data: Dict) -> Dict:
     confidence = (w_c["pose_confidence"] * p_derived.get("pose_confidence", 0.0) +
                   w_c["audio_confidence"] * a_derived.get("audio_confidence", 0.0))
     
-    # 2. Clarity Fusion (0.40 PostureStability, 0.60 AudioStability)
+    # 2. Clarity Fusion (0.30 PostureStability, 0.40 AudioStability, 0.30 ReasoningClarity)
     # Note: Clarity is inversely related to instability.
     w_cl = config.CLARITY_FUSION_WEIGHTS
     clarity = (w_cl["posture_stability_index"] * p_derived.get("posture_stability_index", 0.0) +
-               w_cl["audio_instability"] * (1.0 - a_derived.get("audio_instability", 0.0)))
+               w_cl["audio_instability"] * (1.0 - a_derived.get("audio_instability", 0.0)) +
+               w_cl["reasoning_clarity"] * a_derived.get("reasoning_clarity", 1.0))
                
     # 3. Engagement Fusion (0.50 Pose, 0.50 Audio)
     w_e = config.ENGAGEMENT_FUSION_WEIGHTS

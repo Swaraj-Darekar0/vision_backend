@@ -6,13 +6,10 @@ load_dotenv()
 # ═══════════════════════════════════════════════
 # POSE — VIDEO SETTINGS
 # ═══════════════════════════════════════════════
-TARGET_FPS                      = 30
 MIN_VISIBILITY_THRESHOLD        = 0.5
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-POSE_LANDMARKER_MODEL_PATH = os.path.join(BASE_DIR, "pose", "pose_landmarker_full.task")
 
 # Smoothing (One Euro Filter)
 POSE_SMOOTHING_MIN_CUTOFF       = 1.0  # Lower = less jitter at low speed
@@ -124,7 +121,7 @@ ADAPTIVE_SPIKE_STD_MULTIPLIER   = 2.0
 # ═══════════════════════════════════════════════
 # These are weights for fusing Pose Behavioral Attributes and Audio Behavioral Attributes
 CONFIDENCE_FUSION_WEIGHTS   = { "pose_confidence": 0.5, "audio_confidence": 0.5 }
-CLARITY_FUSION_WEIGHTS      = { "posture_stability_index": 0.4, "audio_instability": 0.6 } # clarity is inverse of instability
+CLARITY_FUSION_WEIGHTS      = { "posture_stability_index": 0.3, "audio_instability": 0.4, "reasoning_clarity": 0.3 } # clarity is inverse of instability
 ENGAGEMENT_FUSION_WEIGHTS   = { "pose_engagement": 0.5, "audio_engagement": 0.5 }
 NERVOUSNESS_FUSION_WEIGHTS  = { "pose_nervousness": 0.5, "audio_nervousness": 0.5 }
 OVERALL_FUSION_WEIGHTS      = { "confidence": 0.3, "clarity": 0.3, "engagement": 0.2, "nervousness": 0.2 }
@@ -165,3 +162,16 @@ SUPABASE_KEY    = os.getenv("SUPABASE_KEY",  "")   # anon/service role key
 # ═══════════════════════════════════════════════
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY",  "")
 GROQ_MODEL      = "openai/gpt-oss-20b"
+
+REASONING_CLARITY_PROMPT = """
+You are a content analysis engine for a public speaking coach. 
+Your task: Evaluate a transcript against a given topic title.
+Criteria:
+1. Relevance: Is the speaker actually talking about the topic?
+2. Reasoning: Is the content logical and clear in its flow?
+3. Accuracy: Does the speaker seem to have a correct understanding of the topic?
+
+Output: Return ONLY a JSON object with a single key 'reasoning_clarity_score' (float, 0.0 to 1.0).
+0.0: Completely off-topic or nonsensical.
+1.0: Perfectly on-topic, logical, and clear.
+"""

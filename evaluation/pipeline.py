@@ -35,7 +35,8 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
     current_behavioral = {
         "filler_ratio": audio_data["acoustic_metrics"]["filler_ratio"],
         "pause_ratio": audio_data["acoustic_metrics"]["pause_ratio"],
-        "posture_stability_index": pose_data["derived_pose_attributes"]["posture_stability_index"]
+        "posture_stability_index": pose_data["derived_pose_attributes"]["posture_stability_index"],
+        "reasoning_clarity": audio_data["derived_audio_attributes"].get("reasoning_clarity", 1.0)
     }
     progress = compute_deltas({**scores, **current_behavioral}, baseline)
 
