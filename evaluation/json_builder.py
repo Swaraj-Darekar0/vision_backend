@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import config
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ def build_evaluation_json(scores: Dict, progress: Dict,
     # 3. transcript (passed through from audio JSON)
     transcript = audio_data.get("transcript", {})
     
-    # 4. timestamp_events (passed through from audio JSON)
+    # 4. timestamp_events (passed through raw for LLM interpretation)
     timestamp_events = audio_data.get("timestamp_events", [])
     
     # 5. filler_words_used (passed through from audio JSON)
@@ -35,7 +35,10 @@ def build_evaluation_json(scores: Dict, progress: Dict,
     # 6. raw_metrics_snapshot (drill-down data)
     raw_metrics_snapshot = {
         "pose": pose_data.get("posture_metrics", {}),
-        "audio": audio_data.get("acoustic_metrics", {})
+        "audio": {
+            **audio_data.get("acoustic_metrics", {}),
+            "reasoning_clarity": audio_data.get("derived_audio_attributes", {}).get("reasoning_clarity"),
+        },
     }
     
     # 7. session_metadata
@@ -45,7 +48,13 @@ def build_evaluation_json(scores: Dict, progress: Dict,
         "processed_at": datetime.utcnow().isoformat() + "Z",
         "is_first_session": metadata.get("is_first_session", False),
         "topic_title": metadata.get("topic_title", "Untitled Session"),
-        "duration_label": metadata.get("duration_label", "--")
+        "duration_label": metadata.get("duration_label", "--"),
+        "week_number": metadata.get("week_number"),
+        "plan_day": metadata.get("plan_day"),
+        "plan_session_num": metadata.get("plan_session_num"),
+        "is_recovery": metadata.get("is_recovery", False),
+        "target_skill": metadata.get("target_skill"),
+        "is_diagnostic": metadata.get("is_diagnostic", False),
     }
     
     final_json = {

@@ -8,12 +8,28 @@ import os
 import concurrent.futures
 import threading
 import json
+import config
 
 orchestrator_bp = Blueprint("orchestrator", __name__, url_prefix="/analyze")
 logger = logging.getLogger(__name__)
 
 # In-memory store: { job_id -> { "status": str, "result": dict, "error": str } }
 jobs = {}
+
+
+def _parse_optional_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_optional_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() == "true"
 
 def _orchestrator_worker(job_id, landmark_payload, audio_path, user_id, session_id, metadata):
     """
@@ -54,12 +70,14 @@ def _orchestrator_worker(job_id, landmark_payload, audio_path, user_id, session_
             os.remove(audio_path)
             logger.info(f"[{session_id}] Cleaned up temp audio file.")
         
-        # Cleanup processed audio file if it exists (created by audio pipeline)
-        # Assuming audio pipeline logic: tmp/{session_id}_processed.wav
-        processed_audio_path = os.path.join(os.path.dirname(audio_path), f"{session_id}_processed.wav")
-        if os.path.exists(processed_audio_path):
-            os.remove(processed_audio_path)
-            logger.info(f"[{session_id}] Cleaned up processed audio file.")
+        for generated_name in (
+            f"{session_id}_processed.wav",
+            f"{session_id}_transcription.{config.AUDIO_TRANSCRIPTION_FORMAT}",
+        ):
+            generated_path = os.path.join(os.path.dirname(audio_path), generated_name)
+            if os.path.exists(generated_path):
+                os.remove(generated_path)
+                logger.info(f"[{session_id}] Cleaned up generated audio file: {generated_name}")
 
 @orchestrator_bp.route("/full", methods=["POST"])
 def analyze_full():
@@ -100,7 +118,14 @@ def analyze_full():
     metadata = {
         "topic_title": request.form.get("topic_title", "Untitled Session"),
         "duration_label": request.form.get("duration_label", "--"),
-        "is_first_session": request.form.get("is_first_session", "false").lower() == "true"
+        "is_first_session": _parse_optional_bool(request.form.get("is_first_session", "false")),
+        "week_number": _parse_optional_int(request.form.get("week_number")),
+        "plan_day": _parse_optional_int(request.form.get("plan_day")),
+        "plan_session_num": _parse_optional_int(request.form.get("plan_session_num")),
+        "is_recovery": _parse_optional_bool(request.form.get("is_recovery", "false")),
+        "target_skill": request.form.get("target_skill"),
+        "is_diagnostic": _parse_optional_bool(request.form.get("is_diagnostic", "false")),
+        "speaker_level": request.form.get("speaker_level"),
     }
 
     logger.info(f"[{session_id}] Full analysis request received. Spawning background worker.")

@@ -57,6 +57,10 @@ POSE_ENGAGEMENT_WEIGHTS     = { "gesture_score": 0.40, "amplitude_score": 0.30, 
 # ═══════════════════════════════════════════════
 AUDIO_SAMPLE_RATE               = 16000
 WHISPER_MODEL_SIZE              = "base"
+AUDIO_TRANSCRIPTION_FORMAT      = "mp3"
+AUDIO_TRANSCRIPTION_BITRATE     = "64k"
+PYIN_FRAME_LENGTH               = 2048
+PYIN_HOP_LENGTH                 = 1024
 
 # ═══════════════════════════════════════════════
 # AUDIO — ACOUSTIC THRESHOLDS
@@ -121,7 +125,7 @@ ADAPTIVE_SPIKE_STD_MULTIPLIER   = 2.0
 # ═══════════════════════════════════════════════
 # These are weights for fusing Pose Behavioral Attributes and Audio Behavioral Attributes
 CONFIDENCE_FUSION_WEIGHTS   = { "pose_confidence": 0.5, "audio_confidence": 0.5 }
-CLARITY_FUSION_WEIGHTS      = { "posture_stability_index": 0.3, "audio_instability": 0.4, "reasoning_clarity": 0.3 } # clarity is inverse of instability
+CLARITY_FUSION_WEIGHTS      = { "posture_stability_index": 0.1, "audio_instability": 0.3, "reasoning_clarity": 0.6 } # clarity is inverse of instability
 ENGAGEMENT_FUSION_WEIGHTS   = { "pose_engagement": 0.5, "audio_engagement": 0.5 }
 NERVOUSNESS_FUSION_WEIGHTS  = { "pose_nervousness": 0.5, "audio_nervousness": 0.5 }
 OVERALL_FUSION_WEIGHTS      = { "confidence": 0.3, "clarity": 0.3, "engagement": 0.2, "nervousness": 0.2 }
@@ -137,12 +141,14 @@ ROLLING_BASELINE_SESSIONS           = 3
 
 # ═══════════════════════════════════════════════
 # AUDIO — ASSEMBLYAI TRANSCRIPTION
-# Model: Universal-3 Pro — do not downgrade
+# Prefer Universal-3 Pro, but allow Universal-2 fallback for multilingual audio.
 # ═══════════════════════════════════════════════
-ASSEMBLYAI_KEY              = os.getenv("ASSEMBLYAI_API_KEY", "")
-ASSEMBLYAI_SPEECH_MODEL         = "universal"   # Universal-3 Pro
+ASSEMBLYAI_KEY                  = os.getenv("ASSEMBLYAI_API_KEY", "")
+ASSEMBLYAI_SPEECH_MODELS        = ["universal-3-pro", "universal-2"]
+ASSEMBLYAI_LANGUAGE_DETECTION   = True
 ASSEMBLYAI_PUNCTUATE            = True
-ASSEMBLYAI_FORMAT_TEXT          = False         # preserve raw spoken text exactly
+ASSEMBLYAI_FORMAT_TEXT          = False
+ASSEMBLYAI_TEMPERATURE          = 0.1
 ASSEMBLYAI_TRANSCRIPTION_PROMPT = (
     "Transcribe exactly what is spoken without any cleanup or correction. "
     "Include all filler sounds such as um, uh, hmm, and erm exactly as uttered. "
@@ -156,12 +162,64 @@ ASSEMBLYAI_TRANSCRIPTION_PROMPT = (
 # ═══════════════════════════════════════════════
 SUPABASE_URL    = os.getenv("SUPABASE_URL",  "")
 SUPABASE_KEY    = os.getenv("SUPABASE_KEY",  "")   # anon/service role key
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 # ═══════════════════════════════════════════════
 # INFRASTRUCTURE — LLM (Groq)
 # ═══════════════════════════════════════════════
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY",  "")
 GROQ_MODEL      = "openai/gpt-oss-20b"
+GROQ_TOPIC_MODEL = os.getenv("GROQ_TOPIC_MODEL", "llama-3.3-70b-versatile")
+GROQ_TOPIC_MAX_TOKENS = 4000
+GROQ_WEEKLY_REVIEW_MAX_TOKENS = 400
+GROQ_REQUEST_TIMEOUT_SECONDS = 30
+
+# Training system enums
+SPEAKER_LEVEL_VALUES = ("developing", "competent", "advanced")
+SUBSCRIPTION_PLAN_VALUES = ("weekly", "monthly")
+
+# Subscription durations and billing
+SUBSCRIPTION_WEEKLY_DAYS = 7
+SUBSCRIPTION_MONTHLY_DAYS = 30
+SUBSCRIPTION_PRICE_WEEKLY = 90
+SUBSCRIPTION_PRICE_MONTHLY = 480
+
+PLAN_TOPIC_MIN_WORDS = 6
+PLAN_SESSION_DURATION_MAX_MINUTES = 2
+
+PLAN_TOPIC_SYSTEM_PROMPT = """
+You are a topic generator for a public speaking training application.
+Your job is to generate personalized speaking session topics for a user
+based on their profile and plan context.
+
+STRICT OUTPUT RULES:
+- Respond ONLY with valid JSON. No preamble, no explanation, no markdown.
+- The JSON must contain a single top-level key: "topics".
+- "topics" must be an array of session topic objects.
+- Every topic object must contain:
+  day, session, tier, topic_title, target_skill, duration_minutes, resources
+- duration_minutes must be an integer less than or equal to 2.
+- resources must contain:
+  hint, research_prompt, youtube_search
+- Every topic_title must be a complete, speakable prompt, not a short label.
+- Never repeat a topic that appears in previously_used_topics.
+- research_prompt and youtube_search may be null.
+- Hints must be actionable and brief.
+- For youtube_search, return a search query, not a URL.
+"""
+
+WEEKLY_REVIEW_SYSTEM_PROMPT = """
+You are a public speaking coach writing a brief weekly review for a user.
+You receive pre-computed performance statistics for the week.
+Your ONLY job: write a 2-3 sentence narrative summary in second person ("You...").
+
+STRICT RULES:
+- Do NOT compute, recalculate, or modify any numeric value.
+- Reference the completion_rate, weakest_metric, and strongest_metric by name.
+- If missed_days is non-empty, acknowledge it briefly but constructively.
+- Output plain text only. No JSON, no markdown, no bullet points.
+- Maximum 3 sentences.
+"""
 
 REASONING_CLARITY_PROMPT = """
 You are a content analysis engine for a public speaking coach. 

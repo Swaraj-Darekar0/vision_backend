@@ -32,8 +32,10 @@ def extract_acoustic_features(audio_path: str) -> Dict:
         # 1. Pitch (F0) extraction using pyin
         # fmin/fmax roughly match human vocal range
         f0, voiced_flag, voiced_probs = librosa.pyin(
-            y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'), 
-            sr=sr, frame_length=2048
+            y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'),
+            sr=sr,
+            frame_length=config.PYIN_FRAME_LENGTH,
+            hop_length=config.PYIN_HOP_LENGTH,
         )
         # Fill NaNs with 0
         f0_filled = np.nan_to_num(f0)

@@ -1,95 +1,142 @@
-# Testing the Backend Pipelines (Async Update)
+# Testing The Current Backend
 
-**Note:** All analysis endpoints now return immediately with a `job_id`. You must poll the status endpoint to get the result.
+This file reflects the current backend architecture:
 
-### 0. Download MediaPipe Model
-The new MediaPipe Tasks API requires a model file. Download the "Full" pose model:
-```bash
-curl -o pose_landmarker_full.task https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task
-```
+- `POST /analyze/full` expects `pose_landmarks` as a JSON file and `audio` as an audio/video file
+- all heavy analysis endpoints are async and return a `job_id`
+- pose no longer needs a backend MediaPipe model download
 
-### 1. Start the Server
-Set your API keys before starting:
+Use a strong public-speaking sample where:
+
+- the speaker is clearly visible
+- the landmark JSON was generated on the client side from that same recording
+- the speech is clean and mostly uninterrupted
+
+## 1. Start The Server
+
 ```powershell
 $env:ASSEMBLYAI_API_KEY="your_aai_key"
 $env:GROQ_API_KEY="your_groq_key"
+$env:SUPABASE_URL="your_supabase_url"
+$env:SUPABASE_KEY="your_supabase_key"
+$env:SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
 python app.py
 ```
 
-### 2. Health Check
+## 2. Health Check
+
 ```bash
 curl http://127.0.0.1:5000/health
 ```
 
-### 3. Analyze Pose (Video) - Async
-**Step 1: Start Job**
+## 3. Full Pipeline Test
+
+Replace these placeholders before running:
+
+- `test/strong_pose_landmarks.json`
+- `test/strong_audio.mp4`
+- `YOUR_USER_ID`
+
+### Start Full Analysis
+
 ```bash
-# Returns {"job_id": "...", "session_id": "..."}
-$response = Invoke-RestMethod -Uri "http://127.0.0.1:5000/pose/analyze" -Method Post -InFile "testVideo(Long).mp4" -ContentType "multipart/form-data"
-$jobId = $response.job_id
-Write-Host "Job ID: $jobId"
+curl -X POST "http://127.0.0.1:5000/analyze/full" ^
+  -F "pose_landmarks=@test/strong_pose_landmarks.json;type=application/json" ^
+  -F "audio=@test/strong_audio.mp4" ^
+  -F "user_id=YOUR_USER_ID" ^
+  -F "topic_title=How leaders build healthy team culture" ^
+  -F "duration_label=2 min" ^
+  -F "is_first_session=true" ^
+  -F "is_diagnostic=false" ^
+  -F "speaker_level=competent"
 ```
 
-**Step 2: Poll Status**
+Expected response:
+
+```json
+{"job_id":"...","session_id":"..."}
+```
+
+### Poll Full Analysis Status
+
+Replace `YOUR_JOB_ID` with the returned `job_id`.
+
 ```bash
-# Repeat until status is "done"
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/pose/status/$jobId" -Method Get
+curl "http://127.0.0.1:5000/analyze/status/YOUR_JOB_ID"
 ```
 
-### 4. Analyze Audio (Audio/Video) - Async
-**Step 1: Start Job**
+Poll until:
+
+- `"status":"done"` to inspect the final result
+- or `"status":"error"` to inspect the failure reason
+
+## 4. Evaluation-Only Test
+
+Use this when you already have `pose_json` and `audio_json` saved locally and want to test only the evaluation layer.
+
+Create `tmp/eval_payload.json` with this shape:
+
+```json
+{
+  "pose_json": {},
+  "audio_json": {},
+  "user_id": "YOUR_USER_ID",
+  "topic_title": "How leaders build healthy team culture",
+  "duration_label": "2 min",
+  "is_first_session": true,
+  "is_diagnostic": false,
+  "speaker_level": "competent"
+}
+```
+
+### Start Evaluation Job
+
 ```bash
-$response = Invoke-RestMethod -Uri "http://127.0.0.1:5000/audio/analyze" -Method Post -InFile "testVideo(Long).mp4" -ContentType "multipart/form-data"
-$jobId = $response.job_id
+curl -X POST "http://127.0.0.1:5000/evaluate" ^
+  -H "Content-Type: application/json" ^
+  --data "@tmp/eval_payload.json"
 ```
 
-**Step 2: Poll Status**
+### Poll Evaluation Status
+
 ```bash
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/audio/status/$jobId" -Method Get
+curl "http://127.0.0.1:5000/evaluate/status/YOUR_JOB_ID"
 ```
 
-### 5. Final Evaluation - Async
-**Step 1: Start Job**
+## 5. Auth Commands
+
+### Signup
+
 ```bash
-$response = Invoke-RestMethod -Uri "http://127.0.0.1:5000/evaluate" -Method Post -ContentType "application/json" -InFile "tmp\eval.json"
-$jobId = $response.job_id
+curl -X POST "http://127.0.0.1:5000/auth/signup" ^
+  -H "Content-Type: application/json" ^
+  --data "{\"email\":\"test@example.com\",\"password\":\"password123\"}"
 ```
 
-**Step 2: Poll Status**
+### Login
+
 ```bash
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/evaluate/status/$jobId" -Method Get
+curl -X POST "http://127.0.0.1:5000/auth/login" ^
+  -H "Content-Type: application/json" ^
+  --data "{\"email\":\"test@example.com\",\"password\":\"password123\"}"
 ```
 
-### 6. User Authentication (Synchronous)
+Use the returned `user_id` in the full-pipeline and evaluation commands above.
 
-#### Signup
-```bash
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/auth/signup" -Method Post -ContentType "application/json" -Body '{"email": "test@example.com", "password": "password123"}'
-```
+## 6. What A Good Result Should Look Like
 
-#### Login
-```bash
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/auth/login" -Method Post -ContentType "application/json" -Body '{"email": "test@example.com", "password": "password123"}'
-```
-**Note:** Use the `user_id` (UUID) returned from login in your `eval_payload.json` or evaluation request. The database now requires a valid UUID linked to a user profile.
+For a genuinely good presentation sample, the final `/analyze/full` result should usually show:
 
-### 7. Full Analysis (Orchestrator) - Async
-This runs Pose, Audio, and Evaluation pipelines in one go.
-Requires `user_id` from step 6 (Login).
+- relatively high `overall_scores.confidence`
+- relatively high `overall_scores.clarity`
+- low-to-moderate `overall_scores.nervousness`
+- a strong `llm_feedback.topical_relevance_analysis`
+- timestamped moments that are specific and grounded in the transcript and detected events
 
-**Step 1: Start Job**
-```bash
-$response = Invoke-RestMethod -Uri "https://vision-backend-evzk.onrender.com/analyze/full" -Method Post -ContentType "multipart/form-data" -Body @{ video = Get-Item "test/test_video.mp4"; user_id = "0f48f97b-03d3-4394-a9af-f8b2d91ce94c" }
-$jobId = $response.job_id
-```
+If you want a stricter benchmark, test 3 clips:
 
-```
-curl -X POST "http://192.168.0.102:5000/analyze/full" \
-  -F "video=@test/test_video.mp4" \
-  -F "user_id=0f48f97b-03d3-4394-a9af-f8b2d91ce94c"
-```
+- one clearly strong speaker
+- one average speaker
+- one clearly weak or nervous speaker
 
-**Step 2: Poll Status**
-```bash
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/analyze/status/$jobId" -Method Get
-```
+That makes it much easier to judge whether the ranking and coaching output feel believable.

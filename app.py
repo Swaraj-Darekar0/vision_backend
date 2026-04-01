@@ -6,6 +6,8 @@ from evaluation.routes import eval_bp
 from auth.routes import auth_bp
 from orchestrator.routes import orchestrator_bp
 from streak.routes import streak_bp
+from subscription.routes import subscription_bp
+from plan.routes import plan_bp
 import logging
 import os
 
@@ -35,6 +37,8 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(orchestrator_bp)
     app.register_blueprint(streak_bp)
+    app.register_blueprint(subscription_bp)
+    app.register_blueprint(plan_bp)
     
     # Create temp directory if it doesn't exist
     tmp_dir = os.path.join(os.getcwd(), "tmp")
@@ -42,7 +46,19 @@ def create_app() -> Flask:
     
     @app.route("/health")
     def health():
-        return {"status": "healthy", "pipelines": ["pose", "audio", "evaluation", "auth", "orchestrator"]}, 200
+        return {
+            "status": "healthy",
+            "pipelines": [
+                "pose",
+                "audio",
+                "evaluation",
+                "auth",
+                "orchestrator",
+                "streak",
+                "subscription",
+                "plan",
+            ],
+        }, 200
 
     return app
 

@@ -1,22 +1,10 @@
 from flask import Blueprint, request, jsonify
-from supabase import create_client, Client
-import config
 import logging
-from typing import Optional
+
+from common.supabase_client import get_supabase_client
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 logger = logging.getLogger(__name__)
-
-# Initialize Supabase client for Auth
-_db: Optional[Client] = None
-if config.SUPABASE_URL and config.SUPABASE_KEY:
-    try:
-        _db = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
-        logger.info("Auth: Supabase client initialized.")
-    except Exception as e:
-        logger.error(f"Auth: Failed to initialize Supabase client: {e}")
-else:
-    logger.warning("Auth: Supabase credentials missing in config.")
 
 @auth_bp.route("/signup", methods=["POST"])
 def signup():
@@ -24,6 +12,7 @@ def signup():
     POST /auth/signup
     Body: { "email": "...", "password": "..." }
     """
+    _db = get_supabase_client()
     if not _db:
         return jsonify({"error": "Supabase client not initialized"}), 500
 
@@ -76,6 +65,7 @@ def login():
     POST /auth/login
     Body: { "email": "...", "password": "..." }
     """
+    _db = get_supabase_client()
     if not _db:
         return jsonify({"error": "Supabase client not initialized"}), 500
 

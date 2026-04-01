@@ -28,16 +28,21 @@ def transcribe(audio_path: str) -> Dict:
     if not config.ASSEMBLYAI_KEY:
         raise RuntimeError("AssemblyAI API key is missing.")
 
-    logger.info(f"Transcribing {audio_path} using AssemblyAI (disfluencies enabled)")
+    logger.info(
+        "Transcribing %s using AssemblyAI speech_models=%s language_detection=%s",
+        audio_path,
+        config.ASSEMBLYAI_SPEECH_MODELS,
+        config.ASSEMBLYAI_LANGUAGE_DETECTION,
+    )
     
     try:
-        # 1. Configure transcription options
-        # Universal-3 Pro supports prompting for raw disfluency preservation
-
         transcription_config = aai.TranscriptionConfig(
-            speech_models=["universal-3-pro"],
-            prompt=config.ASSEMBLYAI_TRANSCRIPTION_PROMPT ,
-            temperature=0.1
+            speech_models=config.ASSEMBLYAI_SPEECH_MODELS,
+            language_detection=config.ASSEMBLYAI_LANGUAGE_DETECTION,
+            punctuate=config.ASSEMBLYAI_PUNCTUATE,
+            format_text=config.ASSEMBLYAI_FORMAT_TEXT,
+            prompt=config.ASSEMBLYAI_TRANSCRIPTION_PROMPT,
+            temperature=config.ASSEMBLYAI_TEMPERATURE,
         )
 
         # 2. Perform transcription
@@ -78,7 +83,11 @@ def transcribe(audio_path: str) -> Dict:
             "total_words": len(words_data)
         }
 
-        logger.info(f"Transcription complete: {len(words_data)} words detected")
+        logger.info(
+            "Transcription complete: %s words detected, language=%s",
+            len(words_data),
+            getattr(transcript, "language_code", None),
+        )
         return output
 
     except Exception as e:

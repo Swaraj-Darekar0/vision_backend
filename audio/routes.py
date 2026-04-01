@@ -4,6 +4,7 @@ import uuid
 import os
 import logging
 import threading
+import config
 
 audio_bp = Blueprint("audio", __name__, url_prefix="/audio")
 logger = logging.getLogger(__name__)
@@ -33,11 +34,12 @@ def _audio_worker(job_id, audio_path, session_id):
         if os.path.exists(audio_path):
             os.remove(audio_path)
             logger.info(f"[{session_id}] Cleaned up temp file.")
-        # Also clean up the processed wav from preprocessor
-        # Note: Using hardcoded path structure from original code
-        processed_path = f"tmp/{session_id}_processed.wav"
-        if os.path.exists(processed_path):
-            os.remove(processed_path)
+        for generated_path in (
+            f"tmp/{session_id}_processed.wav",
+            f"tmp/{session_id}_transcription.{config.AUDIO_TRANSCRIPTION_FORMAT}",
+        ):
+            if os.path.exists(generated_path):
+                os.remove(generated_path)
 
 @audio_bp.route("/analyze", methods=["POST"])
 def analyze():

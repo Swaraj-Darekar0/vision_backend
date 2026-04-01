@@ -2,6 +2,7 @@ import numpy as np
 import logging
 from typing import Dict, List
 import config
+from audio.filler_detector import count_fillers_in_words
 
 logger = logging.getLogger(__name__)
 
@@ -40,16 +41,8 @@ def aggregate_windows(acoustics: Dict, timing: Dict, fillers: Dict, transcript: 
         
         # 1. Window-level Filler Ratio
         window_words = [w for w in words if time_start <= w["start"] < time_end]
-        window_filler_count = 0
         if window_words:
-            # Re-detect fillers for this specific window or filter session list
-            # For simplicity, we filter the session words if we had a list of filler timestamps
-            # But the contract asks for window-level scores.
-            for w in window_words:
-                if w["word"].lower().strip(",.?!") in config.FILLER_WORDS:
-                    # Note: This is a simplified check without pause context for per-window
-                    window_filler_count += 1
-            
+            window_filler_count, _ = count_fillers_in_words(window_words)
             filler_ratio = window_filler_count / len(window_words)
         else:
             filler_ratio = 0.0
