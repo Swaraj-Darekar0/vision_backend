@@ -5,6 +5,8 @@
 **Audience:** Backend team, React Native frontend team  
 **Goal:** Move heavy deterministic media-processing stages from backend to device while preserving the current evaluation quality and response shape.
 
+**Formula and config reference:** [referenced_formuals.md](/e:/vision/reference_documents/referenced_formuals.md)
+
 ---
 
 ## 1. Why We Are Doing This
@@ -330,6 +332,257 @@ Notes:
 
 - `acoustic_windows` is optional in phase 1
 - if omitted, backend may rebuild coarse windows from transcript timing only
+- an empty `acoustic_windows: []` is valid and should be treated the same as omission
+
+## 6.2 Request compatibility and precedence rules
+
+This section defines the exact fallback contract for rollout safety.
+
+### New-client required fields
+
+For the new device-offload client path, the frontend should send:
+
+- `pose_json`
+- `audio_acoustic_json`
+- `audio`
+- `user_id`
+
+### Legacy-client required fields
+
+For the legacy backend-compute path, the frontend may send:
+
+- `pose_landmarks`
+- `audio`
+- `user_id`
+
+### Coexistence rules
+
+During migration, old and new fields may coexist in the same request.
+
+Allowed coexistence:
+
+- `pose_json` and `pose_landmarks`
+- `audio_acoustic_json` together with legacy `pose_landmarks`
+
+### Precedence rules
+
+If both `pose_json` and `pose_landmarks` are present:
+
+- `pose_json` wins
+- `pose_landmarks` must be ignored
+
+If `audio_acoustic_json` is present and valid:
+
+- backend should use the device acoustic path
+- backend should skip local preprocessing and local acoustic extraction
+
+If `audio_acoustic_json` is absent:
+
+- backend should use the legacy backend acoustic path
+
+### Fallback matrix
+
+#### Case A: `pose_json` present, `audio_acoustic_json` present
+
+Backend behavior:
+
+- use device pose path
+- use device acoustic path
+
+#### Case B: `pose_json` present, `audio_acoustic_json` absent
+
+Backend behavior:
+
+- use device pose path
+- use legacy backend audio compute path
+
+#### Case C: `pose_landmarks` present, `audio_acoustic_json` present
+
+Backend behavior:
+
+- use legacy backend pose path
+- use device acoustic path
+
+#### Case D: `pose_landmarks` present, `audio_acoustic_json` absent
+
+Backend behavior:
+
+- use full legacy backend path
+
+#### Case E: `pose_json` and `pose_landmarks` both present
+
+Backend behavior:
+
+- use `pose_json`
+- ignore `pose_landmarks`
+
+#### Case F: malformed or partial `audio_acoustic_json`
+
+Recommended rollout behavior:
+
+- early rollout: allow backend fallback to legacy backend acoustic compute
+- stable rollout: reject explicitly with a validation error
+
+#### Case G: malformed `pose_json`
+
+Recommended behavior:
+
+- do not silently fall back if `pose_json` was intentionally sent by a new client
+- return a structured validation error unless the request is clearly legacy-only
+
+### Recommended backend priority order
+
+For pose:
+
+1. valid `pose_json`
+2. else valid `pose_landmarks`
+3. else request error
+
+For audio acoustics:
+
+1. valid `audio_acoustic_json`
+2. else legacy backend acoustic path
+
+## 6.3 Numeric precision and serialization rules
+
+To reduce frontend/backend drift from float serialization differences:
+
+- JSON metrics must be sent as numeric JSON values, not strings
+- frontend should compute using native float precision internally
+- frontend should serialize exported metrics rounded to **4 decimal places**
+- backend should parse them as floats
+- backend must not reject values solely because they are rounded
+
+### Precision rule for payload fields
+
+Applies to:
+
+- all `posture_metrics.*`
+- all `derived_pose_attributes.*`
+- all `acoustic_metrics.*`
+- all `acoustic_windows[*].pitch_variance_normalized`
+- all `acoustic_windows[*].pause_ratio`
+- all `acoustic_windows[*].time_start`
+- all `acoustic_windows[*].time_end`
+
+Recommended frontend helper:
+
+```text
+round4(x) = round(x, 4)
+```
+
+Additional serialization rules:
+
+- booleans must be sent as true JSON booleans
+- `window_index` must be an integer
+- identifiers such as `session_id` must remain strings
+
+## 6.4 Validation and error response contract
+
+Backend should return structured validation errors so frontend can show precise retry and failure states.
+
+### Recommended error response shape
+
+```json
+{
+  "error": {
+    "code": "INVALID_POSE_JSON",
+    "message": "pose_json must contain posture_metrics and derived_pose_attributes",
+    "details": {
+      "field": "pose_json",
+      "missing_keys": ["posture_metrics"]
+    },
+    "fallback_used": false
+  }
+}
+```
+
+### Recommended validation error codes
+
+- `MISSING_AUDIO`
+- `MISSING_USER_ID`
+- `MISSING_POSE_INPUT`
+- `INVALID_POSE_JSON`
+- `INVALID_POSE_LANDMARKS`
+- `INVALID_AUDIO_ACOUSTIC_JSON`
+- `UNSUPPORTED_PIPELINE_VERSION`
+- `MISSING_REQUIRED_KEYS`
+- `INVALID_NUMERIC_RANGE`
+
+### Fallback-related response behavior
+
+If backend rejects malformed device payloads:
+
+- return `400`
+- include `fallback_used: false`
+
+If backend accepts the request but falls back to legacy backend compute:
+
+- the final success payload should include a metadata note
+- recommended response field:
+
+```json
+{
+  "session_metadata": {
+    "fallbacks_used": ["legacy_backend_audio_compute"]
+  }
+}
+```
+
+## 6.5 Session artifact expectations
+
+### Accepted upload media during migration
+
+Backend should accept these media types during migration:
+
+- `audio/mpeg`
+- `audio/mp3`
+- `audio/mp4`
+- `video/mp4`
+- `audio/wav`
+- `audio/x-wav`
+- `audio/m4a`
+- `audio/aac`
+
+### Migration rule
+
+During migration:
+
+- frontend should prefer a true compressed speech audio artifact
+- backend should still accept `video/mp4` temporarily for compatibility
+
+### Preferred new-client artifact
+
+- mono
+- `16kHz`
+- `mp3`
+- approximately `64k` bitrate
+
+### Upload size expectation
+
+Recommended current contract:
+
+- frontend should target uploads under `25 MB`
+- backend hard-reject size should be added explicitly when request-size enforcement is implemented
+
+### Audio-only vs video upload
+
+Target end state:
+
+- frontend sends a compressed audio artifact for transcription
+
+Temporary compatibility:
+
+- backend may still accept `video/mp4`
+- backend may still work with current media temporarily while clients migrate
+
+### MIME-type rule
+
+Frontend should set the correct multipart MIME type when possible.
+
+If the mobile stack cannot reliably set the correct MIME type:
+
+- backend may infer from extension as a compatibility fallback
 
 ---
 
@@ -647,6 +900,7 @@ Guardrail:
 
 - all formulas and thresholds must still come from the same `config.py` / shared spec
 - if frontend reimplements formulas, they must match backend math exactly
+- frontend and backend teams must use [referenced_formuals.md](/e:/vision/reference_documents/referenced_formuals.md) as the implementation reference for formulas and required config settings
 
 ## 12.2 Risk: event logic divergence
 
@@ -695,6 +949,7 @@ Frontend must:
 - compute acoustic metrics on device
 - upload compressed speech audio plus compact JSON payloads
 - preserve numeric compatibility with backend formulas
+- implement deterministic formulas and thresholds by following [referenced_formuals.md](/e:/vision/reference_documents/referenced_formuals.md)
 
 ---
 

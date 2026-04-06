@@ -55,6 +55,7 @@ def build_evaluation_json(scores: Dict, progress: Dict,
         "is_recovery": metadata.get("is_recovery", False),
         "target_skill": metadata.get("target_skill"),
         "is_diagnostic": metadata.get("is_diagnostic", False),
+        "fallbacks_used": metadata.get("fallbacks_used", []),
     }
     
     final_json = {

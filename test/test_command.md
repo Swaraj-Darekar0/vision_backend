@@ -2,14 +2,17 @@
 
 This file reflects the current backend architecture:
 
-- `POST /analyze/full` expects `pose_landmarks` as a JSON file and `audio` as an audio/video file
+- `POST /analyze/full` now supports the device-offload contract:
+  - `pose_json`
+  - `audio_acoustic_json`
+  - `audio`
+- legacy `pose_landmarks` fallback is still supported during rollout
 - all heavy analysis endpoints are async and return a `job_id`
-- pose no longer needs a backend MediaPipe model download
 
 Use a strong public-speaking sample where:
 
-- the speaker is clearly visible
-- the landmark JSON was generated on the client side from that same recording
+- the pose JSON was generated on device from that same recording
+- the acoustic JSON was generated on device from that same recording
 - the speech is clean and mostly uninterrupted
 
 ## 1. Start The Server
@@ -33,16 +36,18 @@ curl http://127.0.0.1:5000/health
 
 Replace these placeholders before running:
 
-- `test/strong_pose_landmarks.json`
-- `test/strong_audio.mp4`
+- `test/strong_pose.json`
+- `test/strong_audio_acoustic.json`
+- `test/strong_audio.mp3`
 - `YOUR_USER_ID`
 
 ### Start Full Analysis
 
 ```bash
 curl -X POST "http://127.0.0.1:5000/analyze/full" ^
-  -F "pose_landmarks=@test/strong_pose_landmarks.json;type=application/json" ^
-  -F "audio=@test/strong_audio.mp4" ^
+  -F "pose_json=@test/strong_pose.json;type=application/json" ^
+  -F "audio_acoustic_json=@test/strong_audio_acoustic.json;type=application/json" ^
+  -F "audio=@test/strong_audio.mp3;type=audio/mpeg" ^
   -F "user_id=YOUR_USER_ID" ^
   -F "topic_title=How leaders build healthy team culture" ^
   -F "duration_label=2 min" ^
@@ -56,6 +61,8 @@ Expected response:
 ```json
 {"job_id":"...","session_id":"..."}
 ```
+
+If you send `audio_acoustic_json`, do not send an MP4 on this new path. The backend now expects a compressed audio artifact such as `.mp3`.
 
 ### Poll Full Analysis Status
 
@@ -140,3 +147,14 @@ If you want a stricter benchmark, test 3 clips:
 - one clearly weak or nervous speaker
 
 That makes it much easier to judge whether the ranking and coaching output feel believable.
+
+## 7. Legacy Fallback Test
+
+Older mobile builds can still call the backend with `pose_landmarks` instead of `pose_json`.
+
+```bash
+curl -X POST "http://127.0.0.1:5000/analyze/full" ^
+  -F "pose_landmarks=@test/strong_pose_landmarks.json;type=application/json" ^
+  -F "audio=@test/strong_audio.mp4" ^
+  -F "user_id=YOUR_USER_ID"
+```

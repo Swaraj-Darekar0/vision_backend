@@ -6,7 +6,13 @@ from audio.filler_detector import count_fillers_in_words
 
 logger = logging.getLogger(__name__)
 
-def aggregate_windows(acoustics: Dict, timing: Dict, fillers: Dict, transcript: Dict) -> List[Dict]:
+def aggregate_windows(
+    acoustics: Dict,
+    timing: Dict,
+    fillers: Dict,
+    transcript: Dict,
+    acoustic_windows: List[Dict] | None = None,
+) -> List[Dict]:
     """
     5-second window grouping and FumbleScore computation.
     Source: backend_SKILL.md Section 6 (audio/window_aggregator.py).
@@ -21,17 +27,13 @@ def aggregate_windows(acoustics: Dict, timing: Dict, fillers: Dict, transcript: 
         
     total_duration = words[-1]["end"]
     num_windows = int(np.ceil(total_duration / window_size))
-    
-    # Extract raw arrays for window slicing
-    f0_array = acoustics["f0_array"]
-    rms_array = acoustics["rms_array"]
     wpm_per_window = timing["wpm_per_window"]
-    
-    # To map frame-based arrays (F0, RMS) to windows, we need to know frame duration
-    # Librosa default for 2048/512 at 16kHz is ~32ms per frame
-    num_frames = len(rms_array)
-    sec_per_frame = total_duration / num_frames if num_frames > 0 else 0
-    frames_per_window = int(window_size / sec_per_frame) if sec_per_frame > 0 else 0
+    acoustic_windows = acoustic_windows or []
+    windows_by_index = {
+        int(window.get("window_index")): window
+        for window in acoustic_windows
+        if window.get("window_index") is not None
+    }
     
     window_results = []
     
@@ -46,27 +48,22 @@ def aggregate_windows(acoustics: Dict, timing: Dict, fillers: Dict, transcript: 
             filler_ratio = window_filler_count / len(window_words)
         else:
             filler_ratio = 0.0
-            
-        # 2. Window-level Pause Ratio (from RMS array)
-        start_frame = i * frames_per_window
-        end_frame = (i + 1) * frames_per_window
-        window_rms = rms_array[start_frame:end_frame]
-        
-        if len(window_rms) > 0:
-            pause_frames = np.sum(window_rms < config.PAUSE_RMS_THRESHOLD)
-            pause_ratio = pause_frames / len(window_rms)
+
+        # 2. Window-level acoustic features
+        source_window = windows_by_index.get(i)
+        if source_window:
+            pause_ratio = float(np.clip(source_window.get("pause_ratio", acoustics.get("pause_ratio", 0.0)), 0.0, 1.0))
+            pv_norm = float(
+                np.clip(
+                    source_window.get("pitch_variance_normalized", acoustics.get("pitch_variance_normalized", 0.0)),
+                    0.0,
+                    1.0,
+                )
+            )
         else:
-            pause_ratio = 0.0
-            
-        # 3. Window-level Pitch Variance (normalized)
-        window_f0 = f0_array[start_frame:end_frame]
-        voiced_f0 = window_f0[window_f0 > 0]
-        if len(voiced_f0) > 1:
-            pv_raw = np.std(voiced_f0) / np.mean(voiced_f0)
-            pv_norm = (pv_raw - config.PITCH_VARIANCE_MIN) / (config.PITCH_VARIANCE_MAX - config.PITCH_VARIANCE_MIN)
-            pv_norm = float(np.clip(pv_norm, 0.0, 1.0))
-        else:
-            pv_norm = 0.0
+            # Coarse fallback when the client only sends session-level acoustic metrics.
+            pause_ratio = float(np.clip(acoustics.get("pause_ratio", 0.0), 0.0, 1.0))
+            pv_norm = float(np.clip(acoustics.get("pitch_variance_normalized", 0.0), 0.0, 1.0))
             
         # 4. Window-level Speech Rate Metrics
         window_wpm = wpm_per_window[i] if i < len(wpm_per_window) else 0.0

@@ -17,6 +17,25 @@ logger = logging.getLogger(__name__)
 jobs = {}
 
 
+def _error_response(
+    code: str,
+    message: str,
+    status_code: int,
+    *,
+    details: dict | None = None,
+    fallback_used: bool = False,
+):
+    payload = {
+        "error": {
+            "code": code,
+            "message": message,
+            "details": details or {},
+            "fallback_used": fallback_used,
+        }
+    }
+    return jsonify(payload), status_code
+
+
 def _parse_optional_int(value):
     if value in (None, ""):
         return None
@@ -31,7 +50,24 @@ def _parse_optional_bool(value) -> bool:
         return value
     return str(value).strip().lower() == "true"
 
-def _orchestrator_worker(job_id, landmark_payload, audio_path, user_id, session_id, metadata):
+def _load_json_payload(field_name: str):
+    if field_name in request.files:
+        raw_bytes = request.files[field_name].read()
+        return json.loads(raw_bytes.decode("utf-8"))
+
+    raw_value = request.form.get(field_name)
+    if raw_value:
+        return json.loads(raw_value)
+
+    return None
+
+
+def _normalized_extension(filename: str) -> str:
+    ext = os.path.splitext(filename or "")[1].lower().lstrip(".")
+    return ext or "wav"
+
+
+def _orchestrator_worker(job_id, pose_input, audio_path, user_id, session_id, metadata, acoustic_payload, use_device_pose):
     """
     Background worker to run the full orchestrator pipeline.
     """
@@ -45,8 +81,11 @@ def _orchestrator_worker(job_id, landmark_payload, audio_path, user_id, session_
         # Note: ThreadPoolExecutor runs in the same process, so global variables are shared.
         # Ensure pipelines are stateless as per Law 3.
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_pose = executor.submit(run_pose_pipeline, landmark_payload, session_id)
-            future_audio = executor.submit(run_audio_pipeline, audio_path, session_id, topic_title)
+            if use_device_pose:
+                future_pose = executor.submit(_prepare_device_pose_json, pose_input, session_id)
+            else:
+                future_pose = executor.submit(run_pose_pipeline, pose_input, session_id)
+            future_audio = executor.submit(run_audio_pipeline, audio_path, session_id, topic_title, acoustic_payload)
             
             # Wait for both to complete
             pose_result = future_pose.result()
@@ -83,34 +122,73 @@ def _orchestrator_worker(job_id, landmark_payload, audio_path, user_id, session_
 def analyze_full():
     """
     POST /analyze/full
-    Accepts: pose_landmarks (json file), audio (audio file), user_id, topic_title, 
+    Accepts: pose_json OR pose_landmarks (json file), audio (audio file), optional audio_acoustic_json, user_id, topic_title, 
              duration_label, is_first_session (form data)
              
     Runs Pose and Audio pipelines in PARALLEL, then Evaluation.
     """
-    if "pose_landmarks" not in request.files:
-        return jsonify({"error": "Missing field: pose_landmarks"}), 400
     if "audio" not in request.files:
-        return jsonify({"error": "Missing field: audio"}), 400
+        return _error_response("MISSING_AUDIO", "Missing field: audio", 400, details={"field": "audio"})
     
     user_id = request.form.get("user_id")
     if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
+        return _error_response("MISSING_USER_ID", "Missing user_id", 400, details={"field": "user_id"})
 
     session_id = request.form.get("session_id", str(uuid.uuid4()))
-    landmark_file = request.files["pose_landmarks"]
     audio_file = request.files["audio"]
+    use_device_pose = False
 
     try:
-        landmark_payload = json.loads(landmark_file.read().decode("utf-8"))
+        pose_payload = _load_json_payload("pose_json")
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return jsonify({"error": "Invalid landmark JSON"}), 400
+        return _error_response("INVALID_POSE_JSON", "Invalid pose_json payload", 400, details={"field": "pose_json"})
+
+    if pose_payload is not None:
+        use_device_pose = True
+    else:
+        try:
+            pose_payload = _load_json_payload("pose_landmarks")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return _error_response(
+                "INVALID_POSE_LANDMARKS",
+                "Invalid pose_landmarks payload",
+                400,
+                details={"field": "pose_landmarks"},
+            )
+        if pose_payload is None:
+            return _error_response(
+                "MISSING_POSE_INPUT",
+                "Missing field: pose_json or pose_landmarks",
+                400,
+                details={"fields": ["pose_json", "pose_landmarks"]},
+            )
+
+    try:
+        acoustic_payload = _load_json_payload("audio_acoustic_json") or {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _error_response(
+            "INVALID_AUDIO_ACOUSTIC_JSON",
+            "Invalid audio_acoustic_json payload",
+            400,
+            details={"field": "audio_acoustic_json"},
+        )
+
+    audio_ext = _normalized_extension(audio_file.filename)
+    if acoustic_payload.get("acoustic_metrics") and audio_ext in {"mp4", "mov", "m4v"}:
+        return _error_response(
+            "INVALID_AUDIO_ARTIFACT",
+            "New device-offload requests must upload a compressed audio artifact such as mp3, not a video container.",
+            400,
+            details={
+                "field": "audio",
+                "received_extension": audio_ext,
+                "expected_extensions": ["mp3", "m4a", "aac", "wav"],
+            },
+        )
 
     # Save audio to temp file
     tmp_dir = os.path.join(os.getcwd(), "tmp")
     os.makedirs(tmp_dir, exist_ok=True)
-    # Try to keep original extension if possible, default to wav
-    audio_ext = audio_file.filename.split('.')[-1] if '.' in audio_file.filename else "wav"
     audio_path = os.path.join(tmp_dir, f"{session_id}.{audio_ext}")
     audio_file.save(audio_path)
 
@@ -126,6 +204,7 @@ def analyze_full():
         "target_skill": request.form.get("target_skill"),
         "is_diagnostic": _parse_optional_bool(request.form.get("is_diagnostic", "false")),
         "speaker_level": request.form.get("speaker_level"),
+        "fallbacks_used": _determine_fallbacks(use_device_pose, acoustic_payload),
     }
 
     logger.info(f"[{session_id}] Full analysis request received. Spawning background worker.")
@@ -135,7 +214,10 @@ def analyze_full():
     jobs[job_id] = {"status": "processing", "result": None, "error": None}
 
     # Spawn background thread
-    thread = threading.Thread(target=_orchestrator_worker, args=(job_id, landmark_payload, audio_path, user_id, session_id, metadata))
+    thread = threading.Thread(
+        target=_orchestrator_worker,
+        args=(job_id, pose_payload, audio_path, user_id, session_id, metadata, acoustic_payload, use_device_pose),
+    )
     thread.daemon = True
     thread.start()
 
@@ -152,3 +234,28 @@ def get_status(job_id):
         return jsonify({"status": "not_found"}), 404
     
     return jsonify(job), 200
+
+
+def _prepare_device_pose_json(pose_payload: dict, fallback_session_id: str) -> dict:
+    if not isinstance(pose_payload, dict):
+        raise ValueError("pose_json must be a JSON object")
+
+    posture_metrics = pose_payload.get("posture_metrics")
+    derived_pose_attributes = pose_payload.get("derived_pose_attributes")
+    if not isinstance(posture_metrics, dict) or not isinstance(derived_pose_attributes, dict):
+        raise ValueError("pose_json must contain posture_metrics and derived_pose_attributes objects")
+
+    session_metadata = dict(pose_payload.get("session_metadata") or {})
+    session_metadata.setdefault("session_id", fallback_session_id)
+    session_metadata.setdefault("pipeline", "pose-device-v1")
+    pose_payload["session_metadata"] = session_metadata
+    return pose_payload
+
+
+def _determine_fallbacks(use_device_pose: bool, acoustic_payload: dict) -> list[str]:
+    fallbacks_used = []
+    if not use_device_pose:
+        fallbacks_used.append("legacy_backend_pose_compute")
+    if not acoustic_payload.get("acoustic_metrics"):
+        fallbacks_used.append("legacy_backend_audio_compute")
+    return fallbacks_used
