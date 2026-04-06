@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import logging
 
-from common.supabase_client import get_supabase_client
+from common.supabase_client import get_supabase_client, get_supabase_service_client
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 logger = logging.getLogger(__name__)
@@ -13,7 +13,8 @@ def signup():
     Body: { "email": "...", "password": "..." }
     """
     _db = get_supabase_client()
-    if not _db:
+    _service_db = get_supabase_service_client()
+    if not _db or not _service_db:
         return jsonify({"error": "Supabase client not initialized"}), 500
 
     data = request.get_json()
@@ -35,7 +36,7 @@ def signup():
         # Insert into user_profiles if user was created
         if res.user:
             try:
-                _db.table("user_profiles").insert({
+                _service_db.table("user_profiles").insert({
                     "id": res.user.id,
                     "email": email
                 }).execute()
@@ -66,7 +67,8 @@ def login():
     Body: { "email": "...", "password": "..." }
     """
     _db = get_supabase_client()
-    if not _db:
+    _service_db = get_supabase_service_client()
+    if not _db or not _service_db:
         return jsonify({"error": "Supabase client not initialized"}), 500
 
     data = request.get_json()
@@ -83,11 +85,27 @@ def login():
             "password": password,
         })
         
+        # Ensure user profile exists
+        user_id = res.user.id
+        try:
+            # Check if profile exists
+            existing = _service_db.table("user_profiles").select("id").eq("id", user_id).limit(1).execute()
+            if not existing.data:
+                # Create profile if it doesn't exist
+                _service_db.table("user_profiles").insert({
+                    "id": user_id,
+                    "email": email
+                }).execute()
+                logger.info(f"Auth: User profile created for {email} on login")
+        except Exception as profile_e:
+            logger.error(f"Auth: Failed to ensure user profile exists: {profile_e}")
+            # Continue anyway
+        
         # Access session and user data
         return jsonify({
             "access_token": res.session.access_token,
             "refresh_token": res.session.refresh_token,
-            "user_id": res.user.id
+            "user_id": user_id
         }), 200
     except Exception as e:
         logger.error(f"Auth: Login failed: {e}")

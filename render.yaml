@@ -7,3 +7,15 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
+      - key: SUPABASE_URL
+        sync: false  # Set this in Render dashboard or via CLI
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_TOPIC_MODEL
+        value: llama-3.3-70b-versatile  # Optional, has default
