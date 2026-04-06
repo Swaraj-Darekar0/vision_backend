@@ -13,7 +13,7 @@ def extract_acoustic_features(audio_path: str) -> Dict:
     Source: backend_SKILL.md Section 6 (audio/acoustic_extractor.py).
     
     Args:
-        audio_path: Path to preprocessed WAV file.
+        audio_path: Path to audio file (WAV or M4A).
         
     Returns:
         Dict: { "f0_array":                     np.ndarray,
@@ -28,6 +28,9 @@ def extract_acoustic_features(audio_path: str) -> Dict:
     try:
         # Load audio at configured sample rate
         y, sr = librosa.load(audio_path, sr=config.AUDIO_SAMPLE_RATE)
+        
+        # Normalize amplitude for consistent processing
+        y = librosa.util.normalize(y)
         
         # 1. Pitch (F0) extraction using pyin
         # fmin/fmax roughly match human vocal range

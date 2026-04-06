@@ -17,7 +17,7 @@ def transcribe(audio_path: str) -> Dict:
     Source: backend_SKILL.md Section 3 & 6.
     
     Args:
-        audio_path: Path to standardized WAV file.
+        audio_path: Path to audio file (M4A, MP3, WAV, etc.).
         
     Returns:
         Dict: { "full_text":    str,

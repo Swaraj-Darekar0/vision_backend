@@ -23,7 +23,7 @@ def run_audio_pipeline(
     Source: backend_SKILL.md Section 6 (audio/pipeline.py).
     
     Args:
-        audio_path: Path to input file (MP4 or WAV).
+        audio_path: Path to input file (M4A, MP4, WAV, etc.).
         session_id: Unique session identifier.
         topic_title: Optional topic title for content analysis.
         

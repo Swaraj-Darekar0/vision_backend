@@ -17,9 +17,19 @@ AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 def preprocess_audio(input_path: str) -> dict:
     """
     Standardizes audio for two downstream uses:
-    - normalized WAV for local librosa analysis
+    - resampled WAV for local librosa analysis (normalized in acoustic_extractor)
     - compressed mono upload for remote transcription
+    
+    For .m4a files, uses the original file directly without transformation.
     """
+
+    # Check if input is already .m4a - use directly without conversion
+    if input_path.lower().endswith('.m4a'):
+        logger.info("Input is .m4a format - using original file without transformation")
+        return {
+            "analysis_path": input_path,
+            "transcription_path": input_path,
+        }
 
     session_id = os.path.splitext(os.path.basename(input_path))[0]
 
@@ -39,11 +49,8 @@ def preprocess_audio(input_path: str) -> dict:
         # 2️⃣ Load audio with librosa and resample
         y, sr = librosa.load(temp_wav, sr=AUDIO_SAMPLE_RATE)
 
-        # 3️⃣ Normalize amplitude
-        y_norm = librosa.util.normalize(y)
-
-        # 4️⃣ Save standardized WAV for local DSP
-        sf.write(analysis_path, y_norm, AUDIO_SAMPLE_RATE)
+        # 3️⃣ Save standardized WAV for local DSP
+        sf.write(analysis_path, y, AUDIO_SAMPLE_RATE)
 
         # 5️⃣ Export compressed speech file for remote transcription upload
         normalized_audio = AudioSegment.from_file(analysis_path)
