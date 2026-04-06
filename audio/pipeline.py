@@ -1,4 +1,5 @@
 import logging
+import math
 from audio.preprocessor import preprocess_audio
 from audio.transcriber import transcribe
 from audio.filler_detector import detect_fillers
@@ -10,6 +11,13 @@ from audio.derived_attributes import compute_derived_attributes
 from audio.json_builder import build_audio_json
 
 logger = logging.getLogger(__name__)
+
+REQUIRED_ACOUSTIC_KEYS = (
+    "pitch_variance_normalized",
+    "jitter_normalized",
+    "energy_variation_normalized",
+    "pause_ratio",
+)
 
 def run_audio_pipeline(
     audio_path: str,
@@ -37,9 +45,31 @@ def run_audio_pipeline(
     acoustic_windows = acoustic_payload.get("acoustic_windows", [])
 
     if acoustic_metrics:
-        logger.info(f"[{session_id}] Using device-provided acoustic metrics.")
-        transcription_path = audio_path
-        acoustics = _normalize_device_acoustics(acoustic_metrics)
+        try:
+            acoustics = _normalize_device_acoustics(acoustic_metrics)
+            logger.info(f"[{session_id}] Using device-provided acoustic metrics.")
+            transcription_path = audio_path
+        except ValueError as exc:
+            logger.warning(
+                "[%s] Invalid device acoustic payload; falling back to legacy backend audio compute: %s",
+                session_id,
+                exc,
+            )
+            processed_paths = preprocess_audio(audio_path)
+            analysis_path = processed_paths["analysis_path"]
+            transcription_path = processed_paths["transcription_path"]
+            acoustics = extract_acoustic_features(analysis_path)
+            acoustic_windows = []
+        else:
+            try:
+                acoustic_windows = _normalize_acoustic_windows(acoustic_windows)
+            except ValueError as exc:
+                logger.warning(
+                    "[%s] Ignoring malformed acoustic_windows and using session-level acoustics only: %s",
+                    session_id,
+                    exc,
+                )
+                acoustic_windows = []
     else:
         # Legacy fallback path for older clients.
         processed_paths = preprocess_audio(audio_path)
@@ -73,20 +103,88 @@ def run_audio_pipeline(
 
 
 def _normalize_device_acoustics(acoustic_metrics: dict) -> dict:
-    required_keys = [
-        "pitch_variance_normalized",
-        "jitter_normalized",
-        "energy_variation_normalized",
-        "pause_ratio",
-    ]
-    missing = [key for key in required_keys if key not in acoustic_metrics]
+    if not isinstance(acoustic_metrics, dict):
+        raise ValueError("audio_acoustic_json.acoustic_metrics must be a JSON object")
+
+    missing = [key for key in REQUIRED_ACOUSTIC_KEYS if key not in acoustic_metrics]
     if missing:
         raise ValueError(f"audio_acoustic_json.acoustic_metrics missing required fields: {', '.join(missing)}")
 
     normalized = {
-        "pitch_variance_normalized": float(acoustic_metrics.get("pitch_variance_normalized", 0.0)),
-        "jitter_normalized": float(acoustic_metrics.get("jitter_normalized", 0.0)),
-        "energy_variation_normalized": float(acoustic_metrics.get("energy_variation_normalized", 0.0)),
-        "pause_ratio": float(acoustic_metrics.get("pause_ratio", 0.0)),
+        key: _coerce_unit_float(
+            acoustic_metrics.get(key),
+            field_name=f"audio_acoustic_json.acoustic_metrics.{key}",
+        )
+        for key in REQUIRED_ACOUSTIC_KEYS
     }
     return normalized
+
+
+def _normalize_acoustic_windows(acoustic_windows) -> list[dict]:
+    if acoustic_windows in (None, []):
+        return []
+    if not isinstance(acoustic_windows, list):
+        raise ValueError("audio_acoustic_json.acoustic_windows must be a list when provided")
+
+    normalized_by_index: dict[int, dict] = {}
+
+    for idx, window in enumerate(acoustic_windows):
+        if not isinstance(window, dict):
+            raise ValueError(f"audio_acoustic_json.acoustic_windows[{idx}] must be an object")
+
+        raw_index = window.get("window_index")
+        if not isinstance(raw_index, int) or raw_index < 0:
+            raise ValueError(f"audio_acoustic_json.acoustic_windows[{idx}].window_index must be an integer >= 0")
+
+        time_start = _coerce_non_negative_float(
+            window.get("time_start"),
+            field_name=f"audio_acoustic_json.acoustic_windows[{idx}].time_start",
+        )
+        time_end = _coerce_non_negative_float(
+            window.get("time_end"),
+            field_name=f"audio_acoustic_json.acoustic_windows[{idx}].time_end",
+        )
+        if time_end <= time_start:
+            raise ValueError(
+                f"audio_acoustic_json.acoustic_windows[{idx}] must satisfy time_end > time_start"
+            )
+
+        normalized_by_index[raw_index] = {
+            "window_index": raw_index,
+            "time_start": time_start,
+            "time_end": time_end,
+            "pitch_variance_normalized": _coerce_unit_float(
+                window.get("pitch_variance_normalized"),
+                field_name=f"audio_acoustic_json.acoustic_windows[{idx}].pitch_variance_normalized",
+            ),
+            "pause_ratio": _coerce_unit_float(
+                window.get("pause_ratio"),
+                field_name=f"audio_acoustic_json.acoustic_windows[{idx}].pause_ratio",
+            ),
+        }
+
+    return [normalized_by_index[index] for index in sorted(normalized_by_index)]
+
+
+def _coerce_unit_float(value, *, field_name: str) -> float:
+    number = _coerce_float(value, field_name=field_name)
+    return min(max(number, 0.0), 1.0)
+
+
+def _coerce_non_negative_float(value, *, field_name: str) -> float:
+    number = _coerce_float(value, field_name=field_name)
+    if number < 0.0:
+        raise ValueError(f"{field_name} must be >= 0")
+    return number
+
+
+def _coerce_float(value, *, field_name: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be numeric") from None
+
+    if not math.isfinite(number):
+        raise ValueError(f"{field_name} must be finite")
+
+    return number
