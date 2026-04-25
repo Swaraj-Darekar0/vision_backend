@@ -22,7 +22,8 @@ REQUIRED_AUDIO_METRICS = [
 ]
 
 REQUIRED_AUDIO_DERIVED = [
-    "audio_instability", "audio_confidence", "audio_engagement", "audio_nervousness"
+    "audio_instability", "audio_confidence", "audio_engagement", "audio_nervousness",
+    "reasoning_clarity", "topic_relevance", "content_effectiveness"
 ]
 
 def validate_inputs(pose_data: Dict, audio_data: Dict) -> Tuple[bool, str]:

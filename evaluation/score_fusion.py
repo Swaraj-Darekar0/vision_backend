@@ -20,6 +20,14 @@ def fuse_scores(pose_data: Dict, audio_data: Dict) -> Dict:
     """
     p_derived = pose_data.get("derived_pose_attributes", {})
     a_derived = audio_data.get("derived_audio_attributes", {})
+
+    # Topic and reasoning quality stay separate from clarity so content
+    # can influence engagement/overall without distorting the clarity metric.
+    w_content = config.CONTENT_EFFECTIVENESS_WEIGHTS
+    content_effectiveness = (
+        w_content["reasoning_clarity"] * a_derived.get("reasoning_clarity", 0.5) +
+        w_content["topic_relevance"] * a_derived.get("topic_relevance", 0.5)
+    )
     
     # 1. Confidence Fusion (0.50 Pose, 0.50 Audio)
     w_c = config.CONFIDENCE_FUSION_WEIGHTS
@@ -35,8 +43,11 @@ def fuse_scores(pose_data: Dict, audio_data: Dict) -> Dict:
                
     # 3. Engagement Fusion (0.50 Pose, 0.50 Audio)
     w_e = config.ENGAGEMENT_FUSION_WEIGHTS
-    engagement = (w_e["pose_engagement"] * p_derived.get("pose_engagement", 0.0) +
-                  w_e["audio_engagement"] * a_derived.get("audio_engagement", 0.0))
+    engagement = (
+        w_e["pose_engagement"] * p_derived.get("pose_engagement", 0.0) +
+        w_e["audio_engagement"] * a_derived.get("audio_engagement", 0.0) +
+        w_e["content_effectiveness"] * content_effectiveness
+    )
                   
     # 4. Nervousness Fusion (0.50 Pose, 0.50 Audio)
     w_n = config.NERVOUSNESS_FUSION_WEIGHTS
@@ -49,14 +60,16 @@ def fuse_scores(pose_data: Dict, audio_data: Dict) -> Dict:
     overall = (w_o["confidence"] * confidence +
                w_o["clarity"] * clarity +
                w_o["engagement"] * engagement +
-               w_o["nervousness"] * (1.0 - nervousness))
+               w_o["nervousness"] * (1.0 - nervousness) +
+               w_o["content_effectiveness"] * content_effectiveness)
                
     output = {
         "confidence": float(np.clip(confidence, 0.0, 1.0)),
         "clarity": float(np.clip(clarity, 0.0, 1.0)),
         "engagement": float(np.clip(engagement, 0.0, 1.0)),
         "nervousness": float(np.clip(nervousness, 0.0, 1.0)),
-        "overall": float(np.clip(overall, 0.0, 1.0))
+        "overall": float(np.clip(overall, 0.0, 1.0)),
+        "content_effectiveness": float(np.clip(content_effectiveness, 0.0, 1.0)),
     }
     
     logger.info("Fused scores successfully.")

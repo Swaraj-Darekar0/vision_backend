@@ -75,7 +75,8 @@ SPEECH_RATE_INSTABILITY_THRESH  = 10.0  # T3 audio (Placeholder)
 FILLER_RATIO_CEILING            = 0.20
 OPTIMAL_WPM                     = 145.0
 FILLER_PAUSE_CONTEXT            = 0.3   # seconds
-
+FILLER_PAUSE_MULTIPLIER    = 1.8   # pause must be 1.8× speaker's own median to count
+FILLER_BASELINE_MIN_WORDS  = 10    # minimum words needed to compute a reliable baseline
 # ═══════════════════════════════════════════════
 # AUDIO — FILLER DICTIONARY
 # ═══════════════════════════════════════════════
@@ -126,9 +127,10 @@ ADAPTIVE_SPIKE_STD_MULTIPLIER   = 2.0
 # These are weights for fusing Pose Behavioral Attributes and Audio Behavioral Attributes
 CONFIDENCE_FUSION_WEIGHTS   = { "pose_confidence": 0.5, "audio_confidence": 0.5 }
 CLARITY_FUSION_WEIGHTS      = { "posture_stability_index": 0.1, "audio_instability": 0.3, "reasoning_clarity": 0.6 } # clarity is inverse of instability
-ENGAGEMENT_FUSION_WEIGHTS   = { "pose_engagement": 0.5, "audio_engagement": 0.5 }
+CONTENT_EFFECTIVENESS_WEIGHTS = { "reasoning_clarity": 0.55, "topic_relevance": 0.45 }
+ENGAGEMENT_FUSION_WEIGHTS   = { "pose_engagement": 0.45, "audio_engagement": 0.45, "content_effectiveness": 0.10 }
 NERVOUSNESS_FUSION_WEIGHTS  = { "pose_nervousness": 0.5, "audio_nervousness": 0.5 }
-OVERALL_FUSION_WEIGHTS      = { "confidence": 0.3, "clarity": 0.3, "engagement": 0.2, "nervousness": 0.2 }
+OVERALL_FUSION_WEIGHTS      = { "confidence": 0.25, "clarity": 0.25, "engagement": 0.20, "nervousness": 0.15, "content_effectiveness": 0.15 }
 
 # ═══════════════════════════════════════════════
 # EVALUATION — PROGRESS CLASSIFICATION
@@ -229,7 +231,15 @@ Criteria:
 2. Reasoning: Is the content logical and clear in its flow?
 3. Accuracy: Does the speaker seem to have a correct understanding of the topic?
 
-Output: Return ONLY a JSON object with a single key 'reasoning_clarity_score' (float, 0.0 to 1.0).
-0.0: Completely off-topic or nonsensical.
-1.0: Perfectly on-topic, logical, and clear.
+Output: Return ONLY a JSON object with these keys:
+- reasoning_clarity_score: float from 0.0 to 1.0
+- topic_relevance_score: float from 0.0 to 1.0
+
+Scoring guidance:
+- reasoning_clarity_score:
+  0.0 = illogical, unclear, or nonsensical reasoning
+  1.0 = very logical, clear, and easy to follow reasoning
+- topic_relevance_score:
+  0.0 = completely off-topic
+  1.0 = fully on-topic and consistently relevant
 """

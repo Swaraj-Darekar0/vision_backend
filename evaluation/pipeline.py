@@ -26,7 +26,9 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
 
     audio_data = copy.deepcopy(audio_data)
     audio_data.setdefault("derived_audio_attributes", {})
-    audio_data["derived_audio_attributes"].setdefault("reasoning_clarity", 1.0)
+    audio_data["derived_audio_attributes"].setdefault("reasoning_clarity", 0.5)
+    audio_data["derived_audio_attributes"].setdefault("topic_relevance", 0.5)
+    audio_data["derived_audio_attributes"].setdefault("content_effectiveness", 0.5)
 
     # 1. Validate inputs
     valid, err = validate_inputs(pose_data, audio_data)
@@ -45,7 +47,7 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
         "filler_ratio": audio_data["acoustic_metrics"]["filler_ratio"],
         "pause_ratio": audio_data["acoustic_metrics"]["pause_ratio"],
         "posture_stability_index": pose_data["derived_pose_attributes"]["posture_stability_index"],
-        "reasoning_clarity": audio_data["derived_audio_attributes"].get("reasoning_clarity", 1.0),
+        "reasoning_clarity": audio_data["derived_audio_attributes"].get("reasoning_clarity", 0.5),
     }
     provisional_progress = compute_deltas({**provisional_scores, **provisional_behavioral}, baseline)
     provisional_json = build_evaluation_json(
@@ -54,8 +56,10 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
     feedback = interpret_with_llm(provisional_json)
 
     # 4. Fold the LLM-derived reasoning clarity back into final fused scoring.
-    audio_data["derived_audio_attributes"]["reasoning_clarity"] = feedback.get("reasoning_clarity_score", 1.0)
+    audio_data["derived_audio_attributes"]["reasoning_clarity"] = feedback.get("reasoning_clarity_score", 0.5)
+    audio_data["derived_audio_attributes"]["topic_relevance"] = feedback.get("topic_relevance_score", 0.5)
     scores = fuse_scores(pose_data, audio_data)
+    audio_data["derived_audio_attributes"]["content_effectiveness"] = scores.get("content_effectiveness", 0.5)
     current_behavioral = {
         "filler_ratio": audio_data["acoustic_metrics"]["filler_ratio"],
         "pause_ratio": audio_data["acoustic_metrics"]["pause_ratio"],

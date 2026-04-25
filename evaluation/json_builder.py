@@ -38,6 +38,8 @@ def build_evaluation_json(scores: Dict, progress: Dict,
         "audio": {
             **audio_data.get("acoustic_metrics", {}),
             "reasoning_clarity": audio_data.get("derived_audio_attributes", {}).get("reasoning_clarity"),
+            "topic_relevance": audio_data.get("derived_audio_attributes", {}).get("topic_relevance"),
+            "content_effectiveness": audio_data.get("derived_audio_attributes", {}).get("content_effectiveness"),
         },
     }
     

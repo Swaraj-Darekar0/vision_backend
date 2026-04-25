@@ -23,9 +23,10 @@ You are a public speaking coach. You receive a pre-computed evaluation JSON.
 Your job: interpret the provided evaluation JSON, judge topical relevance and reasoning clarity from the transcript, and generate coaching feedback.
 
 HARD RULES:
-- reasoning_clarity_score must be based only on session_metadata.topic_title and transcript.full_text.
+- reasoning_clarity_score and topic_relevance_score must be based only on session_metadata.topic_title and transcript.full_text.
 - reasoning_clarity_score must be a float from 0.0 to 1.0.
-- Do NOT compute, recalculate, or modify any provided numeric value other than producing reasoning_clarity_score.
+- topic_relevance_score must be a float from 0.0 to 1.0.
+- Do NOT compute, recalculate, or modify any provided numeric value other than producing reasoning_clarity_score and topic_relevance_score.
 - Do NOT fetch or reference external data.
 - Do NOT reclassify deltas — classifications are already in the JSON.
 - Use transcript, timestamp_events, raw_metrics_snapshot, and provided overall_scores/progress_comparison before writing feedback.
@@ -49,6 +50,7 @@ HARD RULES:
 - Output must be valid JSON with this exact structure:
     {
     "reasoning_clarity_score": 0.0,
+    "topic_relevance_score": 0.0,
     "overall_summary":        "<2-3 sentence session summary>",
     "one_line_headline_mistakes":       "<1 concise headline capturing key insight,mistakes in simple words,be direct good or bad doesn't matter chose your vocabulary wisely>",
     "topical_relevance_analysis":      "<A specific 1-2 sentence assessment of how well the speaker stayed on the topic provided in session_metadata.topic_title and the logical flow of their ideas.>",
@@ -106,7 +108,8 @@ def interpret_with_llm(evaluation_json: Dict) -> Dict:
 def _get_fallback_feedback() -> Dict:
     """Returns a safe fallback structure if LLM fails."""
     return {
-        "reasoning_clarity_score": 1.0,
+        "reasoning_clarity_score": 0.5,
+        "topic_relevance_score": 0.5,
         "overall_summary": "Evaluation complete. Detailed coaching feedback is currently unavailable.",
         "one_line_headline_mistakes": "Detailed mistake summary is unavailable right now.",
         "topical_relevance_analysis": "Topic relevance analysis is currently unavailable.",
@@ -121,10 +124,16 @@ def _get_fallback_feedback() -> Dict:
 
 def _postprocess_feedback(feedback: Dict) -> Dict:
     try:
-        reasoning_score = float(feedback.get("reasoning_clarity_score", 1.0))
+        reasoning_score = float(feedback.get("reasoning_clarity_score", 0.5))
     except (TypeError, ValueError):
-        reasoning_score = 1.0
+        reasoning_score = 0.5
     feedback["reasoning_clarity_score"] = max(0.0, min(1.0, reasoning_score))
+
+    try:
+        topic_relevance_score = float(feedback.get("topic_relevance_score", 0.5))
+    except (TypeError, ValueError):
+        topic_relevance_score = 0.5
+    feedback["topic_relevance_score"] = max(0.0, min(1.0, topic_relevance_score))
 
     moments = feedback.get("timestamped_moments")
     if not isinstance(moments, list):
