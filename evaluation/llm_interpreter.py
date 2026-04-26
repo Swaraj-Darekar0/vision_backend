@@ -32,7 +32,8 @@ HARD RULES:
 - Use transcript, timestamp_events, raw_metrics_snapshot, and provided overall_scores/progress_comparison before writing feedback.
 - For timestamped_moments, only use moments that are supported by the provided timestamp_events list.
 - Each timestamped moment must be grounded in the actual event windows and explained using the transcript and raw metrics.
-- You may combine nearby or duplicate timestamp events into one cleaner, more logical timestamped moment when they clearly describe the same speaking issue.
+- You should combine nearby or duplicate timestamp events into one cleaner, more logical timestamped moment when they clearly describe the same speaking issue.
+- Combine consecutive meaningful moments that occur immediately one after another into a single larger moment when they describe the same issue.
 - If multiple raw events share the same start/end segment, combine them into one timestamped_moment.
 - You are not required to keep the final timestamped_moment locked to a single 5-second detector window.
 - You may choose a slightly broader start/end range if that creates a more logical moment, but it must stay faithful to the surrounding detected event region.
@@ -45,7 +46,7 @@ HARD RULES:
 - Keep each timestamp note short, concrete, and human. Avoid jargon like "variance", "instability", "engagement metric", or "prosody".
 - If the moment is negative, say the actual issue plainly, for example: "You paused too long here and the flow broke."
 - If the moment is positive, say what worked plainly, for example: "This part sounded clear and steady."
-- Prefer the most meaningful 3 to 5 timestamped moments. If there are no useful timestamp events, return an empty list.
+- Prefer the most meaningful timestamped moments. If there are no useful timestamp events, return an empty list.
 - motivational closing include a call to action like "review thisyoutuber's this video on this topic(YOU AS A COACH SUGGEST THE BEST TOPIC ON WHICH HE CAN WHTCH VIDEOS SO HE PINPOINT AND WHICH FACTORS TO IMPROVE BY WATCHING THIS VIDEOS)" or "focus on one item at a time for best results"
 - Output must be valid JSON with this exact structure:
     {
@@ -64,6 +65,7 @@ HARD RULES:
 TIMESTAMPED_MOMENTS RULES:
 - "event" must use only event names from timestamp_events.
 - If multiple raw events describe the same issue, you may combine them into one timestamped_moment and use a short joined event label.
+- If meaningful moments happen in directly adjacent windows, merge them into one larger timestamped_moment when they reflect the same issue.
 - "start" and "end" should be a logical range chosen from the detected event area, not necessarily one raw detector window.
 - "note" must explain the speaker behavior, not just rename the event.
 - The note must clearly explain why this moment was selected.
