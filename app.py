@@ -8,6 +8,7 @@ from orchestrator.routes import orchestrator_bp
 from streak.routes import streak_bp
 from subscription.routes import subscription_bp
 from plan.routes import plan_bp
+from notifications.routes import notifications_bp
 import logging
 import os
 
@@ -39,6 +40,7 @@ def create_app() -> Flask:
     app.register_blueprint(streak_bp)
     app.register_blueprint(subscription_bp)
     app.register_blueprint(plan_bp)
+    app.register_blueprint(notifications_bp)
     
     # Create temp directory if it doesn't exist
     tmp_dir = os.path.join(os.getcwd(), "tmp")
@@ -57,6 +59,7 @@ def create_app() -> Flask:
                 "streak",
                 "subscription",
                 "plan",
+                "notifications",
             ],
         }, 200
 

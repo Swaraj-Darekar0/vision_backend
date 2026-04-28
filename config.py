@@ -165,6 +165,10 @@ ASSEMBLYAI_TRANSCRIPTION_PROMPT = (
 SUPABASE_URL    = os.getenv("SUPABASE_URL",  "")
 SUPABASE_KEY    = os.getenv("SUPABASE_KEY",  "")   # anon/service role key
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_NOTIFICATION_IMAGE_BUCKET = os.getenv("SUPABASE_NOTIFICATION_IMAGE_BUCKET", "notification-images")
+
+EXPO_PUSH_SEND_URL = os.getenv("EXPO_PUSH_SEND_URL", "https://exp.host/--/api/v2/push/send")
+NOTIFICATION_RATE_LIMIT_PER_SECOND = int(os.getenv("NOTIFICATION_RATE_LIMIT_PER_SECOND", "590"))
 
 # ═══════════════════════════════════════════════
 # INFRASTRUCTURE — LLM (Groq)

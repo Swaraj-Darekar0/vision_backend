@@ -15,6 +15,7 @@ soundfile
 pydub
 imageio_ffmpeg
 python-dotenv
+requests
 
 # Evaluation & LLM
 groq
