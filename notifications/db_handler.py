@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from typing import Any, Optional
 from uuid import uuid4
 
 from common.supabase_client import get_supabase_service_client
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -14,6 +17,7 @@ def _now() -> str:
 def upsert_push_token(payload: dict[str, Any]) -> bool:
     db = get_supabase_service_client()
     if db is None:
+        logger.error("Push token upsert skipped: service-role Supabase client unavailable.")
         return False
 
     now = _now()
@@ -27,19 +31,67 @@ def upsert_push_token(payload: dict[str, Any]) -> bool:
         "last_seen_at": now,
         "updated_at": now,
     }
-    db.table("push_tokens").upsert(row, on_conflict="expo_push_token").execute()
-    return True
+    device_id = payload.get("device_id")
+
+    try:
+        if device_id:
+            db.table("push_tokens").update(
+                {
+                    "is_active": False,
+                    "updated_at": now,
+                }
+            ).eq("device_id", device_id).neq("expo_push_token", payload["expo_push_token"]).execute()
+
+        db.table("push_tokens").upsert(row, on_conflict="expo_push_token").execute()
+        logger.info(
+            "Push token upserted for user_id=%s platform=%s device_id=%s",
+            payload["user_id"],
+            payload.get("platform"),
+            payload.get("device_id"),
+        )
+        return True
+    except Exception as exc:
+        logger.exception("Failed to upsert push token for user_id=%s: %s", payload.get("user_id"), exc)
+        return False
 
 
 def deactivate_push_token(user_id: str, expo_push_token: str) -> bool:
     db = get_supabase_service_client()
     if db is None:
+        logger.error("Push token deactivate skipped: service-role Supabase client unavailable.")
         return False
 
-    db.table("push_tokens").update({"is_active": False, "updated_at": _now()}).eq("user_id", user_id).eq(
-        "expo_push_token", expo_push_token
-    ).execute()
-    return True
+    try:
+        db.table("push_tokens").update({"is_active": False, "updated_at": _now()}).eq("user_id", user_id).eq(
+            "expo_push_token", expo_push_token
+        ).execute()
+        logger.info("Push token deactivated for user_id=%s", user_id)
+        return True
+    except Exception as exc:
+        logger.exception("Failed to deactivate push token for user_id=%s: %s", user_id, exc)
+        return False
+
+
+def deactivate_push_tokens_for_device(user_id: str, device_id: str) -> bool:
+    db = get_supabase_service_client()
+    if db is None:
+        logger.error("Push token device deactivate skipped: service-role Supabase client unavailable.")
+        return False
+
+    try:
+        db.table("push_tokens").update({"is_active": False, "updated_at": _now()}).eq("user_id", user_id).eq(
+            "device_id", device_id
+        ).execute()
+        logger.info("Push tokens deactivated for user_id=%s device_id=%s", user_id, device_id)
+        return True
+    except Exception as exc:
+        logger.exception(
+            "Failed to deactivate push tokens for user_id=%s device_id=%s: %s",
+            user_id,
+            device_id,
+            exc,
+        )
+        return False
 
 
 def deactivate_tokens(expo_push_tokens: list[str]) -> None:

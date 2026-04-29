@@ -4,6 +4,7 @@ import mimetypes
 import threading
 from datetime import datetime, timezone
 from uuid import uuid4
+import logging
 
 from flask import Blueprint, jsonify, request
 
@@ -14,6 +15,7 @@ from notifications.admin_auth import require_admin_user, require_bearer_user
 from notifications.expo_client import send_campaign
 
 notifications_bp = Blueprint("notifications", __name__)
+logger = logging.getLogger(__name__)
 
 
 def _json_payload():
@@ -44,6 +46,13 @@ def register_token():
     if platform not in {"ios", "android"}:
         return jsonify({"error": "platform must be ios or android"}), 400
 
+    logger.info(
+        "Registering push token request for user_id=%s platform=%s device_id=%s",
+        user_id,
+        platform,
+        payload.get("device_id"),
+    )
+
     ok = db_handler.upsert_push_token(
         {
             "user_id": user_id,
@@ -54,6 +63,7 @@ def register_token():
         }
     )
     if not ok:
+        logger.error("Push token registration failed for user_id=%s", user_id)
         return jsonify({"error": "Failed to register push token"}), 500
     return jsonify({"ok": True}), 200
 
@@ -69,10 +79,16 @@ def unregister_token():
         return jsonify(err), status
 
     expo_push_token = str(payload.get("expo_push_token", "")).strip()
-    if not expo_push_token:
-        return jsonify({"error": "expo_push_token is required"}), 400
+    device_id = str(payload.get("device_id", "")).strip()
 
-    ok = db_handler.deactivate_push_token(user_id, expo_push_token)
+    if not expo_push_token and not device_id:
+        return jsonify({"error": "expo_push_token or device_id is required"}), 400
+
+    if expo_push_token:
+        ok = db_handler.deactivate_push_token(user_id, expo_push_token)
+    else:
+        ok = db_handler.deactivate_push_tokens_for_device(user_id, device_id)
+
     if not ok:
         return jsonify({"error": "Failed to unregister push token"}), 500
     return jsonify({"ok": True}), 200
