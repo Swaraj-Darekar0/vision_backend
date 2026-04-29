@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -42,6 +43,7 @@ def _build_message(token: str, payload: dict[str, Any]) -> dict[str, Any]:
     }
     if image_url:
         message["richContent"] = {"image": image_url}
+        message["mutableContent"] = True
     return message
 
 
@@ -64,6 +66,18 @@ def _send_batch(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if isinstance(data, dict):
         return [data]
     return []
+
+
+def _schedule_image_delete(payload: dict[str, Any]) -> None:
+    storage_path = payload.get("image_storage_path")
+    if not storage_path:
+        return
+
+    delay_seconds = max(0, int(getattr(config, "NOTIFICATION_IMAGE_DELETE_DELAY_SECONDS", 900)))
+    timer = threading.Timer(delay_seconds, db_handler.delete_notification_image, args=(storage_path,))
+    timer.daemon = True
+    timer.start()
+    logger.info("Scheduled notification image deletion for %s in %s seconds", storage_path, delay_seconds)
 
 
 def send_campaign(campaign_id: str, payload: dict[str, Any], tokens: list[dict[str, Any]]) -> None:
@@ -181,6 +195,7 @@ def send_campaign(campaign_id: str, payload: dict[str, Any], tokens: list[dict[s
                 "completed_at": _now(),
             },
         )
+        _schedule_image_delete(payload)
     except Exception as exc:
         logger.exception("Notification campaign failed: %s", exc)
         db_handler.update_campaign(

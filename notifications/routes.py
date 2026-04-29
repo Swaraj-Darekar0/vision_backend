@@ -3,6 +3,7 @@ from __future__ import annotations
 import mimetypes
 import threading
 from datetime import datetime, timezone
+from urllib.parse import urljoin
 from uuid import uuid4
 import logging
 
@@ -23,6 +24,32 @@ def _json_payload():
     if payload is None:
         return None, (jsonify({"error": "Missing or invalid JSON body"}), 400)
     return payload, None
+
+
+def _extract_signed_url(value):
+    if isinstance(value, dict):
+        nested = value.get("data")
+        if isinstance(nested, dict):
+            nested_url = nested.get("signedURL") or nested.get("signedUrl") or nested.get("signed_url")
+            if nested_url:
+                return nested_url
+        return value.get("signedURL") or value.get("signedUrl") or value.get("signed_url")
+    return getattr(value, "signed_url", None) or getattr(value, "signedURL", None) or value
+
+
+def _absolute_supabase_url(url: str | None) -> str | None:
+    if not url:
+        return None
+
+    url = str(url).strip()
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+
+    base_url = str(getattr(config, "SUPABASE_URL", "")).rstrip("/")
+    if not base_url:
+        return url
+
+    return urljoin(f"{base_url}/", url.lstrip("/"))
 
 
 @notifications_bp.route("/notifications/register-token", methods=["POST"])
@@ -115,16 +142,24 @@ def upload_notification_image():
         return jsonify({"error": "Supabase service client not initialized"}), 500
 
     try:
+        bucket = db.storage.from_(config.SUPABASE_NOTIFICATION_IMAGE_BUCKET)
         db.storage.from_(config.SUPABASE_NOTIFICATION_IMAGE_BUCKET).upload(
             storage_path,
             uploaded.read(),
             {"content-type": content_type, "upsert": "false"},
         )
-        public_url = db.storage.from_(config.SUPABASE_NOTIFICATION_IMAGE_BUCKET).get_public_url(storage_path)
+        signed_response = bucket.create_signed_url(
+            storage_path,
+            int(getattr(config, "NOTIFICATION_IMAGE_SIGNED_URL_SECONDS", 86400)),
+        )
+        image_url = _absolute_supabase_url(_extract_signed_url(signed_response))
+        if not image_url:
+            raise RuntimeError(f"Supabase did not return a signed URL for uploaded image: {signed_response}")
     except Exception as exc:
         return jsonify({"error": f"Failed to upload image: {exc}"}), 500
 
-    return jsonify({"image_url": public_url}), 200
+    logger.info("Notification image uploaded path=%s url=%s", storage_path, image_url)
+    return jsonify({"image_url": image_url, "image_storage_path": storage_path}), 200
 
 
 @notifications_bp.route("/admin/notifications/send", methods=["POST"])

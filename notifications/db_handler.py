@@ -6,6 +6,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from common.supabase_client import get_supabase_service_client
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,7 @@ def create_campaign(admin_user_id: str, payload: dict[str, Any], total_tokens: i
         "title": payload["title"],
         "body": payload["body"],
         "image_url": payload.get("image_url"),
+        "image_storage_path": payload.get("image_storage_path"),
         "data": payload.get("data") or {},
         "target": payload.get("target", "all"),
         "status": "queued",
@@ -185,6 +187,22 @@ def create_campaign(admin_user_id: str, payload: dict[str, Any], total_tokens: i
     }
     result = db.table("notification_campaigns").insert(row).execute()
     return result.data[0] if result.data else row
+
+
+def delete_notification_image(storage_path: Optional[str]) -> None:
+    if not storage_path:
+        return
+
+    db = get_supabase_service_client()
+    if db is None:
+        logger.error("Notification image delete skipped: service-role Supabase client unavailable.")
+        return
+
+    try:
+        db.storage.from_(config.SUPABASE_NOTIFICATION_IMAGE_BUCKET).remove([storage_path])
+        logger.info("Deleted notification image from storage: %s", storage_path)
+    except Exception as exc:
+        logger.exception("Failed to delete notification image %s: %s", storage_path, exc)
 
 
 def update_campaign(campaign_id: str, values: dict[str, Any]) -> None:

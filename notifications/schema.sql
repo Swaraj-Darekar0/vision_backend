@@ -24,6 +24,7 @@ create table if not exists public.notification_campaigns (
   title text not null,
   body text not null,
   image_url text,
+  image_storage_path text,
   data jsonb not null default '{}'::jsonb,
   target text not null default 'all',
   status text not null default 'queued',
@@ -49,3 +50,6 @@ create table if not exists public.notification_deliveries (
 create index if not exists push_tokens_active_idx on public.push_tokens(is_active);
 create index if not exists notification_campaigns_created_at_idx on public.notification_campaigns(created_at desc);
 create index if not exists notification_deliveries_campaign_id_idx on public.notification_deliveries(campaign_id);
+
+alter table public.notification_campaigns
+  add column if not exists image_storage_path text;
