@@ -177,3 +177,12 @@ def notification_history():
         return jsonify({"error": "limit must be a number"}), 400
 
     return jsonify({"campaigns": db_handler.fetch_campaign_history(limit)}), 200
+
+
+@notifications_bp.route("/admin/notifications/stats", methods=["GET"])
+def notification_stats():
+    _, err, status = require_admin_user(request)
+    if err:
+        return jsonify(err), status
+
+    return jsonify(db_handler.fetch_push_token_stats()), 200

@@ -134,6 +134,36 @@ def fetch_active_push_tokens() -> list[dict[str, Any]]:
     return rows
 
 
+def fetch_push_token_stats() -> dict[str, int]:
+    db = get_supabase_service_client()
+    if db is None:
+        return {"active_tokens": 0, "active_ios_tokens": 0, "active_android_tokens": 0}
+
+    active = db.table("push_tokens").select("id", count="exact").eq("is_active", True).limit(1).execute()
+    ios = (
+        db.table("push_tokens")
+        .select("id", count="exact")
+        .eq("is_active", True)
+        .eq("platform", "ios")
+        .limit(1)
+        .execute()
+    )
+    android = (
+        db.table("push_tokens")
+        .select("id", count="exact")
+        .eq("is_active", True)
+        .eq("platform", "android")
+        .limit(1)
+        .execute()
+    )
+
+    return {
+        "active_tokens": active.count or 0,
+        "active_ios_tokens": ios.count or 0,
+        "active_android_tokens": android.count or 0,
+    }
+
+
 def create_campaign(admin_user_id: str, payload: dict[str, Any], total_tokens: int) -> Optional[dict[str, Any]]:
     db = get_supabase_service_client()
     if db is None:
