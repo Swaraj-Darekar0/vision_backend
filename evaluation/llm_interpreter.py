@@ -32,7 +32,7 @@ HARD RULES:
 - Use transcript, timestamp_events, raw_metrics_snapshot, and provided overall_scores/progress_comparison before writing feedback.
 - For timestamped_moments, only use moments that are supported by the provided timestamp_events list.
 - Each timestamped moment must be grounded in the actual event windows and explained using the transcript and raw metrics.
-- You should combine nearby or duplicate timestamp events into one cleaner, more logical timestamped moment when they clearly describe the same speaking issue.
+- You can combine nearby or duplicate timestamp events into one cleaner, more logical timestamped moment when they clearly describe the same speaking issue.
 - Combine consecutive meaningful moments that occur immediately one after another into a single larger moment when they describe the same issue.
 - If multiple raw events share the same start/end segment, combine them into one timestamped_moment.
 - You are not required to keep the final timestamped_moment locked to a single 5-second detector window.
@@ -56,10 +56,9 @@ HARD RULES:
     "one_line_headline_mistakes":       "<1 concise headline capturing key insight,mistakes in simple words,be direct good or bad doesn't matter chose your vocabulary wisely>",
     "topical_relevance_analysis":      "<A specific 1-2 sentence assessment of how well the speaker stayed on the topic provided in session_metadata.topic_title and the logical flow of their ideas.>",
     "progress_narrative":     "<progress since last session based on headline>",
-    "timestamped_moments":    [{"event": "<one event name or a short joined label for the grouped issue>", "start": "MM:SS", "end": "MM:SS", "note": "<simple explanation of what happened in that moment and why it was chosen, based on transcript + event + raw metrics>"}],
+    "timestamped_moments":    [{"event": "<event name or a short joined label for the grouped issue>", "start": "MM:SS", "end": "MM:SS", "note": "<simple explanation of what happened in that moment and why it was chosen, based on transcript + event + raw metrics>"}],
     "top_3_action_items":     ["<item>", "<item>", "<item>"],
     "motivational_closing":   "<Youtube video recommendation with specific topic to watch for improvement>",
-    "suggest_next_presentation_topics":  "<Suggest 1 specific presentation topic (max 6 words) for the next session, based on the evaluation. Choose difficulty level appropriate to avoid frustration or boredom.let it slightly different from the current topic but reletable to user's interest >"
   }
 
 TIMESTAMPED_MOMENTS RULES:
