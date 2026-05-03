@@ -160,3 +160,4 @@ tmp/
 *.json
 !requirements.txt
 !config.py
+.env.example

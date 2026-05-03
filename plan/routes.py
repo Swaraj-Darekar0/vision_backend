@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 import logging
 
 import config
-from common.auth import resolve_request_user
+from common.auth import require_bearer_user
 from plan.pipeline import (
     build_weekly_review,
     generate_plan,
@@ -12,6 +12,7 @@ from plan.pipeline import (
     set_review_shown,
 )
 from plan.topic_generator import TopicGenerationError, TopicValidationError
+from subscription.pipeline import fetch_subscription_status
 
 plan_bp = Blueprint("plan", __name__, url_prefix="/plan")
 logger = logging.getLogger(__name__)
@@ -37,15 +38,25 @@ def _serialize_plan(plan: dict) -> dict:
     }
 
 
+def _require_active_subscription(user_id: str):
+    subscription = fetch_subscription_status(user_id)
+    if not subscription or subscription.get("status") != "active":
+        return jsonify({"error": "Active subscription required"}), 402
+    return None
+
+
 @plan_bp.route("/generate", methods=["POST"])
 def generate():
     payload, error_response = _require_json()
     if error_response:
         return error_response
 
-    user_id, err, status = resolve_request_user(request)
+    user_id, err, status = require_bearer_user(request)
     if err:
         return jsonify(err), status
+    subscription_error = _require_active_subscription(user_id)
+    if subscription_error:
+        return subscription_error
 
     logger.info("Accepted /plan/generate request")
 
@@ -123,9 +134,12 @@ def generate():
 
 @plan_bp.route("/current", methods=["GET"])
 def current():
-    user_id, err, status = resolve_request_user(request)
+    user_id, err, status = require_bearer_user(request)
     if err:
         return jsonify(err), status
+    subscription_error = _require_active_subscription(user_id)
+    if subscription_error:
+        return subscription_error
 
     plan = get_current_plan(user_id)
     if not plan:
@@ -139,9 +153,12 @@ def mark_complete():
     if error_response:
         return error_response
 
-    user_id, err, status = resolve_request_user(request)
+    user_id, err, status = require_bearer_user(request)
     if err:
         return jsonify(err), status
+    subscription_error = _require_active_subscription(user_id)
+    if subscription_error:
+        return subscription_error
 
     required_fields = ["week_number", "day", "session", "session_id"]
     missing = [field for field in required_fields if payload.get(field) is None]
@@ -166,9 +183,12 @@ def weekly_review():
     if error_response:
         return error_response
 
-    user_id, err, status = resolve_request_user(request)
+    user_id, err, status = require_bearer_user(request)
     if err:
         return jsonify(err), status
+    subscription_error = _require_active_subscription(user_id)
+    if subscription_error:
+        return subscription_error
 
     week_number = payload.get("week_number")
     if week_number is None:
@@ -186,9 +206,12 @@ def review_shown():
     if error_response:
         return error_response
 
-    user_id, err, status = resolve_request_user(request)
+    user_id, err, status = require_bearer_user(request)
     if err:
         return jsonify(err), status
+    subscription_error = _require_active_subscription(user_id)
+    if subscription_error:
+        return subscription_error
 
     week_number = payload.get("week_number")
     if week_number is None:
@@ -202,7 +225,7 @@ def review_shown():
 
 @plan_bp.route("/personal-bests", methods=["GET"])
 def personal_bests():
-    user_id, err, status = resolve_request_user(request)
+    user_id, err, status = require_bearer_user(request)
     if err:
         return jsonify(err), status
 
