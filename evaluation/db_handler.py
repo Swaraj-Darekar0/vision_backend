@@ -9,6 +9,18 @@ from common.supabase_client import get_supabase_service_client
 
 logger = logging.getLogger(__name__)
 
+CADENCE_SESSION_COLUMNS = [
+    "speech_rate_wpm",
+    "wpm_sigma_raw",
+    "pause_count_per_minute",
+    "mean_pause_duration_seconds",
+    "inter_word_gap_sigma",
+    "f0_contour_mean_slope",
+    "voiced_filler_proxy_ratio",
+    "stutter_ratio",
+    "disfluency_burden",
+]
+
 
 def fetch_baseline(user_id: str) -> Optional[Dict]:
     """
@@ -98,6 +110,15 @@ def write_session(
         "pitch_variance_normalized": a_metrics.get("pitch_variance_normalized", 0.0),
         "posture_stability_index": p_derived.get("posture_stability_index", 0.0),
         "pause_ratio": a_metrics.get("pause_ratio", 0.0),
+        "speech_rate_wpm": a_metrics.get("speech_rate_wpm", 0.0),
+        "wpm_sigma_raw": a_metrics.get("wpm_sigma_raw", 0.0),
+        "pause_count_per_minute": audio_data.get("cadence_metrics", {}).get("pause_count_per_minute", 0.0),
+        "mean_pause_duration_seconds": audio_data.get("cadence_metrics", {}).get("mean_pause_duration_seconds", 0.0),
+        "inter_word_gap_sigma": audio_data.get("cadence_metrics", {}).get("inter_word_gap_sigma", 0.0),
+        "f0_contour_mean_slope": audio_data.get("cadence_metrics", {}).get("f0_contour_mean_slope", 0.0),
+        "voiced_filler_proxy_ratio": audio_data.get("cadence_metrics", {}).get("voiced_filler_proxy_ratio", 0.0),
+        "stutter_ratio": audio_data.get("cadence_metrics", {}).get("stutter_ratio", 0.0),
+        "disfluency_burden": audio_data.get("cadence_metrics", {}).get("disfluency_burden", 0.0),
         "gesture_score": p_metrics.get("gesture_score", 0.0),
         "topic_title": metadata.get("topic_title", "Untitled Session"),
         "duration_label": metadata.get("duration_label", "--"),
@@ -113,8 +134,16 @@ def write_session(
         res = db.table("session_scores").insert(row_dict).execute()
         return len(res.data) > 0
     except Exception as exc:
-        logger.error(f"Supabase write_session failed: {exc}")
-        return False
+        logger.error(f"Supabase write_session failed with cadence fields: {exc}")
+        try:
+            fallback_dict = dict(row_dict)
+            for key in CADENCE_SESSION_COLUMNS:
+                fallback_dict.pop(key, None)
+            res = db.table("session_scores").insert(fallback_dict).execute()
+            return len(res.data) > 0
+        except Exception as fallback_exc:
+            logger.error(f"Supabase write_session fallback failed: {fallback_exc}")
+            return False
 
 
 def update_session_result(session_id: str, final_result: Dict) -> bool:
@@ -222,6 +251,93 @@ def update_user_profile_flags(user_id: str, metadata: Optional[Dict] = None) -> 
         db.table("user_profiles").update(update_dict).eq("id", user_id).execute()
     except Exception as exc:
         logger.error(f"Supabase update_user_profile_flags failed for {user_id}: {exc}")
+
+
+def read_cadence_profile(user_id: str) -> Optional[Dict]:
+    db = get_supabase_service_client()
+    if db is None:
+        return None
+
+    try:
+        res = (
+            db.table("user_profiles")
+            .select(
+                "cadence_profile,cadence_label,cadence_subtype,profile_locked_at,"
+                "next_cadence_review_at,cadence_natural_wpm_baseline,cadence_wpm_sigma_raw,"
+                "cadence_pause_count_per_minute,cadence_mean_pause_duration_seconds,"
+                "cadence_inter_word_gap_sigma,cadence_f0_contour_mean_slope"
+            )
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        row = res.data[0] if res.data else None
+        if not row or not row.get("cadence_profile"):
+            return None
+        profile = row.get("cadence_profile")
+        return {
+            "profile": profile,
+            "label": row.get("cadence_label") or config.CADENCE_DISPLAY_LABELS.get(profile, "Expressive"),
+            "subtype": row.get("cadence_subtype"),
+            "profile_locked_at": row.get("profile_locked_at"),
+            "next_review_at": row.get("next_cadence_review_at"),
+            "natural_wpm_baseline": row.get("cadence_natural_wpm_baseline", 0.0),
+            "wpm_sigma_raw": row.get("cadence_wpm_sigma_raw", 0.0),
+            "pause_count_per_minute": row.get("cadence_pause_count_per_minute", 0.0),
+            "mean_pause_duration_seconds": row.get("cadence_mean_pause_duration_seconds", 0.0),
+            "inter_word_gap_sigma": row.get("cadence_inter_word_gap_sigma", 0.0),
+            "f0_contour_mean_slope": row.get("cadence_f0_contour_mean_slope", 0.0),
+            "is_locked": True,
+            "is_provisional": False,
+        }
+    except Exception as exc:
+        logger.error(f"Supabase read_cadence_profile failed for {user_id}: {exc}")
+        return None
+
+
+def write_cadence_profile(user_id: str, cadence_profile: Dict) -> None:
+    db = get_supabase_service_client()
+    if db is None or not cadence_profile:
+        return
+
+    update_dict = {
+        "cadence_profile": cadence_profile.get("profile"),
+        "cadence_label": cadence_profile.get("label"),
+        "cadence_subtype": cadence_profile.get("subtype"),
+        "profile_locked_at": cadence_profile.get("profile_locked_at"),
+        "next_cadence_review_at": cadence_profile.get("next_review_at"),
+        "cadence_natural_wpm_baseline": cadence_profile.get("natural_wpm_baseline", 0.0),
+        "cadence_wpm_sigma_raw": cadence_profile.get("wpm_sigma_raw", 0.0),
+        "cadence_pause_count_per_minute": cadence_profile.get("pause_count_per_minute", 0.0),
+        "cadence_mean_pause_duration_seconds": cadence_profile.get("mean_pause_duration_seconds", 0.0),
+        "cadence_inter_word_gap_sigma": cadence_profile.get("inter_word_gap_sigma", 0.0),
+        "cadence_f0_contour_mean_slope": cadence_profile.get("f0_contour_mean_slope", 0.0),
+    }
+
+    try:
+        db.table("user_profiles").update(update_dict).eq("id", user_id).execute()
+    except Exception as exc:
+        logger.error(f"Supabase write_cadence_profile failed for {user_id}: {exc}")
+
+
+def fetch_recent_cadence_sessions(user_id: str, limit: int) -> list[Dict]:
+    db = get_supabase_service_client()
+    if db is None:
+        return []
+
+    try:
+        res = (
+            db.table("session_scores")
+            .select(",".join(CADENCE_SESSION_COLUMNS))
+            .eq("user_id", user_id)
+            .order("session_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return list(res.data or [])
+    except Exception as exc:
+        logger.error(f"Supabase fetch_recent_cadence_sessions failed for {user_id}: {exc}")
+        return []
 
 
 def _extract_reasoning_clarity(row: Dict) -> Optional[float]:

@@ -1,9 +1,13 @@
 import logging
 import copy
+import config
 from evaluation.input_validator import validate_inputs
 from evaluation.score_fusion import fuse_scores
 from evaluation.db_handler import (
     fetch_baseline,
+    fetch_recent_cadence_sessions,
+    read_cadence_profile,
+    write_cadence_profile,
     write_session,
     update_session_result,
     update_personal_bests,
@@ -12,6 +16,7 @@ from evaluation.db_handler import (
 from evaluation.delta_engine import compute_deltas
 from evaluation.json_builder import build_evaluation_json
 from evaluation.llm_interpreter import interpret_with_llm
+from cadence.service import build_cadence_display, build_cadence_snapshot, maybe_refresh_cadence_profile
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +34,7 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
     audio_data["derived_audio_attributes"].setdefault("reasoning_clarity", 0.5)
     audio_data["derived_audio_attributes"].setdefault("topic_relevance", 0.5)
     audio_data["derived_audio_attributes"].setdefault("content_effectiveness", 0.5)
+    cadence_metrics = audio_data.get("cadence_metrics", {})
 
     # 1. Validate inputs
     valid, err = validate_inputs(pose_data, audio_data)
@@ -41,6 +47,22 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
     if not metadata.get("is_first_session", False):
         baseline = fetch_baseline(user_id)
 
+    existing_cadence_profile = read_cadence_profile(user_id)
+    cadence_history = fetch_recent_cadence_sessions(user_id, config.CADENCE_HISTORY_SESSIONS - 1)
+    locked_cadence_profile, provisional_cadence_snapshot = maybe_refresh_cadence_profile(
+        existing_profile=existing_cadence_profile,
+        cadence_history=cadence_history,
+        session_metrics=cadence_metrics,
+        is_diagnostic=bool(metadata.get("is_diagnostic")),
+        processed_at=pose_data.get("session_metadata", {}).get("processed_at"),
+    )
+    active_cadence_context = locked_cadence_profile or provisional_cadence_snapshot
+    cadence_snapshot = build_cadence_snapshot(active_cadence_context)
+    cadence_display = build_cadence_display(
+        active_cadence_context,
+        is_diagnostic=bool(metadata.get("is_diagnostic")),
+    )
+
     # 3. Build a provisional package for the final LLM pass.
     provisional_scores = fuse_scores(pose_data, audio_data)
     provisional_behavioral = {
@@ -51,7 +73,15 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
     }
     provisional_progress = compute_deltas({**provisional_scores, **provisional_behavioral}, baseline)
     provisional_json = build_evaluation_json(
-        provisional_scores, provisional_progress, audio_data, pose_data, user_id, metadata
+        provisional_scores,
+        provisional_progress,
+        audio_data,
+        pose_data,
+        user_id,
+        metadata,
+        cadence_context=active_cadence_context,
+        cadence_snapshot=cadence_snapshot,
+        cadence_display=cadence_display,
     )
     feedback = interpret_with_llm(provisional_json)
 
@@ -70,6 +100,8 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
 
     # 5. WRITE TO DB (Initial write with scores and metadata)
     write_session(user_id, scores, pose_data, audio_data, metadata)
+    if locked_cadence_profile and locked_cadence_profile != existing_cadence_profile:
+        write_cadence_profile(user_id, locked_cadence_profile)
 
     raw_metrics = {
         "posture_stability": pose_data.get("derived_pose_attributes", {}).get("posture_stability_index", 0.0),
@@ -89,7 +121,17 @@ def run_evaluation_pipeline(pose_data: dict, audio_data: dict, user_id: str, met
         logger.error(f"Diagnostic profile update failed for user {user_id}: {exc}")
 
     # 6. Assemble final read-only JSON package
-    final_json = build_evaluation_json(scores, progress, audio_data, pose_data, user_id, metadata)
+    final_json = build_evaluation_json(
+        scores,
+        progress,
+        audio_data,
+        pose_data,
+        user_id,
+        metadata,
+        cadence_context=active_cadence_context,
+        cadence_snapshot=cadence_snapshot,
+        cadence_display=cadence_display,
+    )
 
     # Combine all into final response
     result = {

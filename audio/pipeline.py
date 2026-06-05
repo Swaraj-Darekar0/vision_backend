@@ -9,6 +9,7 @@ from audio.window_aggregator import aggregate_windows
 from audio.event_detector import detect_events
 from audio.derived_attributes import compute_derived_attributes
 from audio.json_builder import build_audio_json
+from cadence.service import build_session_cadence_metrics, classify_cadence_profile
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,12 @@ REQUIRED_ACOUSTIC_KEYS = (
     "jitter_normalized",
     "energy_variation_normalized",
     "pause_ratio",
+)
+OPTIONAL_CADENCE_KEYS = (
+    "pause_count_per_minute",
+    "mean_pause_duration_seconds",
+    "f0_contour_mean_slope",
+    "voiced_filler_proxy_ratio",
 )
 
 def run_audio_pipeline(
@@ -43,6 +50,7 @@ def run_audio_pipeline(
     acoustic_payload = acoustic_payload or {}
     acoustic_metrics = acoustic_payload.get("acoustic_metrics")
     acoustic_windows = acoustic_payload.get("acoustic_windows", [])
+    frontend_cadence_metrics = acoustic_payload.get("cadence_raw_metrics") or {}
 
     if acoustic_metrics:
         try:
@@ -87,16 +95,41 @@ def run_audio_pipeline(
     timing = compute_timing_metrics(transcript)
     
     # 5. Window Aggregation (5s chunks + FumbleScore)
-    windows = aggregate_windows(acoustics, timing, fillers, transcript, acoustic_windows=acoustic_windows)
+    cadence_metrics = build_session_cadence_metrics(
+        transcript,
+        timing,
+        fillers,
+        frontend_metrics=_normalize_frontend_cadence_metrics(frontend_cadence_metrics),
+    )
+    cadence_metrics.update(
+        classify_cadence_profile(cadence_metrics, is_provisional=True)
+    )
+    windows = aggregate_windows(
+        acoustics,
+        timing,
+        fillers,
+        transcript,
+        acoustic_windows=acoustic_windows,
+        cadence_metrics=cadence_metrics,
+    )
     
     # 6. Event Detection (6 event types)
-    events = detect_events(windows)
+    events = detect_events(windows, cadence_metrics=cadence_metrics)
     
     # 7. Derived Behavioral Attributes
     derived = compute_derived_attributes(acoustics, timing, fillers)
     
     # 8. JSON Assembly
-    result = build_audio_json(transcript, acoustics, timing, fillers, derived, events, session_id)
+    result = build_audio_json(
+        transcript,
+        acoustics,
+        timing,
+        fillers,
+        derived,
+        events,
+        cadence_metrics,
+        session_id,
+    )
     
     logger.info(f"[{session_id}] Audio Pipeline completed successfully")
     return result
@@ -164,6 +197,19 @@ def _normalize_acoustic_windows(acoustic_windows) -> list[dict]:
         }
 
     return [normalized_by_index[index] for index in sorted(normalized_by_index)]
+
+
+def _normalize_frontend_cadence_metrics(raw_metrics: dict) -> dict:
+    if not isinstance(raw_metrics, dict):
+        return {}
+    normalized = {}
+    for key in OPTIONAL_CADENCE_KEYS:
+        if key in raw_metrics:
+            try:
+                normalized[key] = float(raw_metrics.get(key))
+            except (TypeError, ValueError):
+                continue
+    return normalized
 
 
 def _coerce_unit_float(value, *, field_name: str) -> float:

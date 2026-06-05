@@ -30,6 +30,10 @@ HARD RULES:
 - Do NOT fetch or reference external data.
 - Do NOT reclassify deltas — classifications are already in the JSON.
 - Use transcript, timestamp_events, raw_metrics_snapshot, and provided overall_scores/progress_comparison before writing feedback.
+- If cadence_context is present, use it as a binding interpretation layer for pace, pauses, fillers, and timestamped moments.
+- For fast-paced profiles, do not give generic advice like "slow down"; focus on where pacing stopped helping clarity.
+- For grounded profiles, do not give generic advice like "speed up"; focus on where pauses or fillers broke momentum.
+- For expressive profiles, do not flatten their style; focus on controlling variation so the most important moments stand out.
 - For timestamped_moments, only use moments that are supported by the provided timestamp_events list.
 - Each timestamped moment must be grounded in the actual event windows and explained using the transcript and raw metrics.
 - You can combine nearby or duplicate timestamp events into one cleaner, more logical timestamped moment when they clearly describe the same speaking issue.
@@ -46,6 +50,7 @@ HARD RULES:
 - Keep each timestamp note short, concrete, and human. Avoid jargon like "variance", "instability", "engagement metric", or "prosody".
 - If the moment is negative, say the actual issue plainly, for example: "You paused too long here and the flow broke."
 - If the moment is positive, say what worked plainly, for example: "This part sounded clear and steady."
+- When cadence_context is present, explain whether the moment shows the speaker's natural style, an overextension of that style, or a true breakdown.
 - Prefer the most meaningful timestamped moments. If there are no useful timestamp events, return an empty list.
 - motivational closing include a call to action like "review thisyoutuber's this video on this topic(YOU AS A COACH SUGGEST THE BEST TOPIC ON WHICH HE CAN WHTCH VIDEOS SO HE PINPOINT AND WHICH FACTORS TO IMPROVE BY WATCHING THIS VIDEOS)" or "focus on one item at a time for best results"
 - Output must be valid JSON with this exact structure:

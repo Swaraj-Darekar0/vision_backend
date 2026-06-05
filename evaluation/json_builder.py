@@ -7,7 +7,10 @@ logger = logging.getLogger(__name__)
 
 def build_evaluation_json(scores: Dict, progress: Dict, 
                           audio_data: Dict, pose_data: Dict, 
-                          user_id: str, metadata: Dict) -> Dict:
+                          user_id: str, metadata: Dict,
+                          cadence_context: Optional[Dict] = None,
+                          cadence_snapshot: Optional[Dict] = None,
+                          cadence_display: Optional[Dict] = None) -> Dict:
     """
     Assembles 5 blocks of the Final Evaluation JSON.
     Source: backend_SKILL.md Section 6 (evaluation/json_builder.py).
@@ -67,7 +70,10 @@ def build_evaluation_json(scores: Dict, progress: Dict,
         "transcript": transcript,
         "timestamp_events": timestamp_events,
         "filler_words_used": filler_words_used,
-        "raw_metrics_snapshot": raw_metrics_snapshot
+        "raw_metrics_snapshot": raw_metrics_snapshot,
+        "cadence_context": cadence_context,
+        "cadence_snapshot": cadence_snapshot,
+        "cadence_display": cadence_display,
     }
     
     logger.info(f"Final evaluation JSON built for session {session_id}")

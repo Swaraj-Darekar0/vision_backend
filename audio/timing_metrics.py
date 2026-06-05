@@ -27,6 +27,7 @@ def compute_timing_metrics(transcript_data: Dict) -> Dict:
             "speech_rate_wpm": 0.0,
             "speech_rate_score": 0.0,
             "speech_rate_instability_normalized": 0.0,
+            "wpm_sigma_raw": 0.0,
             "wpm_per_window": []
         }
 
@@ -89,6 +90,7 @@ def compute_timing_metrics(transcript_data: Dict) -> Dict:
         # Normalize: SpeechRateInstabilityNormalized = min(instab / T3, 1)
         instability_norm = instability_raw / config.SPEECH_RATE_INSTABILITY_THRESH
     else:
+        instability_raw = 0.0
         instability_norm = 0.0
         
     speech_rate_instability_normalized = float(np.clip(instability_norm, 0.0, 1.0))
@@ -97,6 +99,7 @@ def compute_timing_metrics(transcript_data: Dict) -> Dict:
         "speech_rate_wpm": float(speech_rate_wpm),
         "speech_rate_score": speech_rate_score,
         "speech_rate_instability_normalized": speech_rate_instability_normalized,
+        "wpm_sigma_raw": float(instability_raw),
         "wpm_per_window": wpm_per_window
     }
     

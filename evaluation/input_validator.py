@@ -18,7 +18,7 @@ REQUIRED_POSE_DERIVED = [
 REQUIRED_AUDIO_METRICS = [
     "pitch_variance_normalized", "jitter_normalized", "energy_variation_normalized",
     "pause_ratio", "speech_rate_wpm", "speech_rate_score",
-    "speech_rate_instability_normalized", "filler_ratio"
+    "speech_rate_instability_normalized", "filler_ratio", "wpm_sigma_raw"
 ]
 
 REQUIRED_AUDIO_DERIVED = [
@@ -75,5 +75,9 @@ def validate_inputs(pose_data: Dict, audio_data: Dict) -> Tuple[bool, str]:
     # 3. Check for events list
     if "timestamp_events" not in audio_data:
         return False, "Missing timestamp_events list in audio data"
+
+    cadence_metrics = audio_data.get("cadence_metrics", {})
+    if cadence_metrics and not isinstance(cadence_metrics, dict):
+        return False, "cadence_metrics must be an object when present"
 
     return True, ""

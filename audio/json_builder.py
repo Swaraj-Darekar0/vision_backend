@@ -5,7 +5,8 @@ from typing import Dict, List
 logger = logging.getLogger(__name__)
 
 def build_audio_json(transcript: Dict, acoustics: Dict, timing: Dict, 
-                     fillers: Dict, derived: Dict, events: List[Dict], 
+                     fillers: Dict, derived: Dict, events: List[Dict],
+                     cadence_metrics: Dict,
                      session_id: str) -> Dict:
     """
     Assembles final Audio JSON (5 blocks).
@@ -23,6 +24,7 @@ def build_audio_json(transcript: Dict, acoustics: Dict, timing: Dict,
         "speech_rate_wpm": timing["speech_rate_wpm"],
         "speech_rate_score": timing["speech_rate_score"],
         "speech_rate_instability_normalized": timing["speech_rate_instability_normalized"],
+        "wpm_sigma_raw": timing["wpm_sigma_raw"],
         "filler_ratio": fillers["filler_ratio"]
     }
 
@@ -39,6 +41,7 @@ def build_audio_json(transcript: Dict, acoustics: Dict, timing: Dict,
             "total_words": transcript["total_words"]
         },
         "acoustic_metrics": acoustic_metrics,
+        "cadence_metrics": cadence_metrics,
         "filler_words_used": fillers["filler_words_used"],
         "derived_audio_attributes": derived,
         "timestamp_events": events
