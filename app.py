@@ -7,6 +7,7 @@ from auth.routes import auth_bp
 from orchestrator.routes import orchestrator_bp
 from streak.routes import streak_bp
 from subscription.routes import subscription_bp
+from subscription.webhook import subscription_webhook_bp
 from plan.routes import plan_bp
 from notifications.routes import notifications_bp
 import logging
@@ -39,6 +40,7 @@ def create_app() -> Flask:
     app.register_blueprint(orchestrator_bp)
     app.register_blueprint(streak_bp)
     app.register_blueprint(subscription_bp)
+    app.register_blueprint(subscription_webhook_bp)
     app.register_blueprint(plan_bp)
     app.register_blueprint(notifications_bp)
     
