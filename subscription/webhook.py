@@ -10,7 +10,7 @@ from flask import Blueprint, request, current_app
 import config
 
 
-MIPOE_URL = "https://mipoe.vercel.app/api/webhooks/subscription/11"
+MIPOE_URL = "https://enrich-prominent-backspace.ngrok-free.dev/api/webhooks/subscription/11"
 
 subscription_webhook_bp = Blueprint("subscription_webhook", __name__)
 
